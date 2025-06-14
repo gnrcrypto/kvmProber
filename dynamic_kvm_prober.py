@@ -95,7 +95,6 @@ if __name__ == "__main__":
 
 from dynamic_kvm_prober import generic_probe
 import fcntl
-import os
 
 def probe(dev_path):
     print(f"[PLUGIN:kvm] Probing {dev_path} with KVM-specific IOCTLs.")
