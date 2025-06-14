@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import sys
 import fcntl
-import importlib
+import importlib.util
 import stat
 
 # Path to vmlinux file containing kernel symbols
