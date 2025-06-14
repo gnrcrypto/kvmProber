@@ -104,6 +104,21 @@ fi
 echo "[*] Installing kvm prober"
 python3 kvm_dma_overwrite.py
 
+# Check if kvm_prober was built
+if [ ! -f "$PROBE_DIR/kvm_prober" ]; then
+    echo "[!] kvm_prober build failed. Attempting to use backup Makefile..."
+    # Copy backup Makefile (assumed to be in current directory) to $PROBE_DIR
+    cp ./Makefile.backup "$PROBE_DIR/Makefile"
+    # Try building again
+    (cd "$PROBE_DIR" && make)
+    if [ -f "$PROBE_DIR/kvm_prober" ]; then
+        echo "[+] kvm_prober built successfully with backup Makefile."
+    else
+        echo "[!] kvm_prober still failed to build. Please check your environment."
+        exit 1
+    fi
+fi
+
 sleep 2
 ### ===Set kvm_prober globally accessible (if not already present)===
 echo -e "\n\033[1;36m[*] Setting kvm_prober into /usr/local/bin...\033[0m"

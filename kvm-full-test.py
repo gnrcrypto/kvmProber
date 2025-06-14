@@ -35,9 +35,9 @@ def setup_kvm_prober():
     if not os.path.exists("/dev/kvm_probe"):
         log("[*] Setting up kvm_prober module...")
 
-        # Build kernel module
-        if not os.path.isfile("kvm_prober.ko"):
-            log("[*] Building kvm_prober module...")
+        # Build kernel module and userland binary if missing
+        if not os.path.isfile("kvm_prober.ko") or not os.path.isfile("kvm_prober"):
+            log("[*] Building kvm_prober module and userland binary...")
             run_cmd("make", capture_output=False)
 
         # Load module

