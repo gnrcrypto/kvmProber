@@ -17,7 +17,7 @@ fi
 echo -e "\n\033[1;36m[*] Installing missing packages...\033[0m"
 sleep 1
 apt update -y >/dev/null
-apt install sudo make xxd python3-pip build-essential python3-importlib-metadata python3-importlib-resource binutils tar -y >/dev/null || true
+apt install sudo make xxd python3-pip build-essential python3-importlib-metadata binutils tar -y >/dev/null || true
 
 sleep 2
 ### ===Kernel Header Installation===
