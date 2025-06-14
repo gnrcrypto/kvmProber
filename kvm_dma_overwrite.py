@@ -7,6 +7,15 @@ import sys
 import fcntl
 import importlib.util
 import stat
+from dynamic_kvm_prober import (
+    get_kvm_related_modules,
+    enumerate_char_devices,
+    ensure_plugin,
+    load_plugin,
+    generic_probe,
+    PLUGIN_DIR,
+    PLUGIN_TEMPLATE,
+)
 
 # Path to vmlinux file containing kernel symbols
 VMLINUX_PATH = "/root/vmlinux"
@@ -909,36 +918,6 @@ def probe_device(dev_path):
                     pass  # Log or analyze errors for clues
     except Exception as e:
         print(f"Failed to open {dev_path}: {e}")
-
-PLUGIN_DIR = "./plugins"
-
-PLUGIN_TEMPLATE = '''from dynamic_kvm_prober import generic_probe
-
-def probe(dev_path):
-    print(f"[PLUGIN:{{kvm}}] Probing {{dev_path}} (auto-generated, dynamic).")
-    generic_probe(dev_path)
-'''
-def ensure_plugin(name):
-    plugin_path = f"{PLUGIN_DIR}/{name}.py"
-    if not os.path.exists(plugin_path):
-        with open(plugin_path, "w") as f:
-            f.write(PLUGIN_TEMPLATE.replace("{plugin_name}", name))
-        print(f"[+] Auto-generated dynamic plugin: {plugin_path}")
-
-def load_plugin(name):
-    plugin_path = f"{PLUGIN_DIR}/{name}.py"
-    if not os.path.exists(plugin_path):
-        ensure_plugin(name)
-    try:
-        spec = importlib.util.spec_from_file_location(name, plugin_path)
-        if spec and spec.loader:
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            print(f"[+] Loaded plugin: {name}")
-            return module
-    except Exception as e:
-        print(f"[-] Could not load plugin {name}: {e}")
-    return None
 
 def generic_probe(dev_path):
     print(f"[!] No plugin for {dev_path}, using generic probe.")
