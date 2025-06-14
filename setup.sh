@@ -171,6 +171,9 @@ fi
 echo "[✔] modprobe_candidates successfully created!"
 echo "[*] $MODPROBE_PA"
 
+echo "[*] getting kvm_prober all setup"
+python3 kvm_dma_overwrite.py
+
 sleep 2
 echo "[*] running read and write flag tests"
 bash run_mmio_prober.sh
