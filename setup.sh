@@ -91,10 +91,10 @@ sleep 2
 echo "[*] Installing exploit script"
 
 # Check if previous kvm_prober directory exists
-if ls -la /tmp/kvm_probe_build* &>/dev/null; then
-    echo "[!] Removing previous kvm_prober directory"
-    rm -r /tmp/kvm_probe_build*
-fi
+# if ls -la /tmp/kvm_probe_build* &>/dev/null; then
+#    echo "[!] Removing previous kvm_prober directory"
+#    rm -r /tmp/kvm_probe_build*
+# fi
 
 # Install kvm_prober
 echo "[*] Installing kvm prober"
