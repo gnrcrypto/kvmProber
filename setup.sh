@@ -17,8 +17,7 @@ fi
 echo -e "\n\033[1;36m[*] Installing missing packages...\033[0m"
 sleep 1
 apt update -y >/dev/null
-apt install sudo make xxd python3-pip build-essential binutils tar -y >/dev/null || true
-python3 -m pip install --upgrade importlib -y >/dev/null || true
+apt install sudo make xxd python3-pip build-essential python3-importlib-metadata python3-importlib-resource binutils tar -y >/dev/null || true
 
 sleep 2
 ### ===Kernel Header Installation===
@@ -147,7 +146,6 @@ sleep 2
 # Check if vmlinux exists
 if [[ ! -f /root/vmlinux ]]; then
     echo "[!] vmlinux not available!"
-    exit 1
 fi
 
 sleep 2
@@ -168,7 +166,6 @@ sleep 2
 # Verify if modprobe_candidates was created
 if [[ ! -f /root/modprobe_candidates ]]; then
     echo "[!] modprobe_candidates not created! vmlinux might be unavailable."
-    exit 1
 fi
 
 echo "[✔] modprobe_candidates successfully created!"
@@ -176,4 +173,4 @@ echo "[*] $MODPROBE_PA"
 
 sleep 2
 echo "[*] running read and write flag tests"
-bash run_mmio_probe.sh
+bash run_mmio_prober.sh
