@@ -915,7 +915,7 @@ PLUGIN_DIR = "./plugins"
 PLUGIN_TEMPLATE = '''from dynamic_kvm_prober import generic_probe
 
 def probe(dev_path):
-    print(f"[PLUGIN:{{plugin_name}}] Probing {{dev_path}} (auto-generated, dynamic).")
+    print(f"[PLUGIN:{kvm}] Probing {{dev_path}} (auto-generated, dynamic).")
     generic_probe(dev_path)
 '''
 def ensure_plugin(name):
