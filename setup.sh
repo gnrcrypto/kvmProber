@@ -18,6 +18,7 @@ echo -e "\n\033[1;36m[*] Installing missing packages...\033[0m"
 sleep 1
 apt update -y >/dev/null
 apt install sudo make xxd python3-pip build-essential binutils tar -y >/dev/null || true
+python3 -m pip install --upgrade importlib -y >/dev/null || true
 
 sleep 2
 ### ===Kernel Header Installation===
@@ -88,18 +89,19 @@ fi
 
 sleep 2
 ### ===Create kvm_prober===
-echo "[*] installing exploit script"
+echo "[*] Installing exploit script"
 
-if ls -la /tmp/kvm_probe_build*; then
-    echo "[!] removing previous kvm_prober dir";
-    rm -r /tmp/kvm_probe_build*; then
-    echo "[*] installing kvm prober"
-    python3 /root/kvm_dma_overwrite.py
-else
-    echo "[*] installing kvm prober"
-    python3 /root/kvm_dma_overwrite.py
+# Check if previous kvm_prober directory exists
+if ls -la /tmp/kvm_probe_build* &>/dev/null; then
+    echo "[!] Removing previous kvm_prober directory"
+    rm -r /tmp/kvm_probe_build*
+fi
 
-sleep2
+# Install kvm_prober
+echo "[*] Installing kvm prober"
+python3 /root/kvm_dma_overwrite.py
+
+sleep 2
 ### ===Set kvm_prober globally accessible (if not already present)===
 echo -e "\n\033[1;36m[*] Setting kvm_prober into /usr/local/bin...\033[0m"
 sleep 1
