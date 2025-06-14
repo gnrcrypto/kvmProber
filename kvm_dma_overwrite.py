@@ -124,10 +124,9 @@ def setup_kvm_probe_lab():
 #include <linux/ktime.h>
 #include <linux/types.h>
 #include <linux/byteorder/generic.h>
-#include <linux/kvm_para.h>  // For hypercalls
-
-#define DRIVER_NAME "{MODULE_NAME}"
-#define DEVICE_FILE_NAME "{DEVICE_NAME}"
+#include <linux/kvm_para.h>
+#define DRIVER_NAME "{{MODULE_NAME}}"
+#define DEVICE_FILE_NAME "{{DEVICE_NAME}}"
 
 #define VQ_PAGE_ORDER 0
 #define VQ_PAGE_SIZE (1UL << (PAGE_SHIFT + VQ_PAGE_ORDER))
@@ -534,7 +533,7 @@ module_exit(mod_exit);
 #include <inttypes.h>
 #include <time.h>  // For nanosleep
 
-#define DEVICE_PATH "/dev/{DEVICE_NAME}"
+#define DEVICE_PATH "/dev/{{DEVICE_NAME}}"
 
 // Data structures (must match kernel module)
 struct port_io_data {{
@@ -821,8 +820,8 @@ int main(int argc, char *argv[]) {{
 """
 
     makefile_code = f"""
-TARGET_MODULE := {MODULE_NAME}
-USER_PROBER := {USER_PROBER_NAME}
+TARGET_MODULE := {{MODULE_NAME}}
+USER_PROBER := {{USER_PROBER_NAME}}
 
 obj-m += $(TARGET_MODULE).o
 
@@ -834,13 +833,13 @@ EXTRA_CFLAGS_MODULE := -Wno-declaration-after-statement -D_GNU_SOURCE -Wno-point
 
 all: $(TARGET_MODULE).ko $(USER_PROBER)
 
-$(TARGET_MODULE).ko: {MODULE_NAME}.c
+$(TARGET_MODULE).ko: {{MODULE_NAME}}.c
 \t@echo "Building Kernel Module $(TARGET_MODULE).ko for kernel $(KVERS)"
 \t$(MAKE) -C $(KDIR) M=$(PWD_M) EXTRA_CFLAGS="$(EXTRA_CFLAGS_MODULE)" modules
 
 $(USER_PROBER): {USER_PROBER_NAME}.c
 \t@echo "Building User Prober $(USER_PROBER)"
-\tgcc -Wall -O2 -o $(USER_PROBER) {USER_PROBER_NAME}.c
+\tgcc -Wall -O2 -o $(USER_PROBER) {{USER_PROBER_NAME}}.c
 
 clean:
 \t@echo "Cleaning build files..."
