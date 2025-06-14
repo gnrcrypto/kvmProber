@@ -17,7 +17,7 @@ fi
 echo -e "\n\033[1;36m[*] Installing missing packages...\033[0m"
 sleep 1
 apt update -y >/dev/null
-apt install sudo make xxd python3-pip build-essential python3-importlib-metadata binutils tar -y >/dev/null || true
+apt install sudo make xxd python3-pip build-essential binutils tar -y >/dev/null || true
 
 sleep 2
 ### ===Kernel Header Installation===
@@ -33,6 +33,7 @@ if [[ "$KERN_VER" == *"6.1.0-21"* ]]; then
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb
     dpkg -i ./linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
     dpkg -i ./linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
+    apt-get install -f -y >/dev/null || true 
     apt-get --fix-missing install -y >/dev/null
 else
     # Check if /proc/kallsyms exists
@@ -50,6 +51,9 @@ sleep 2
 echo "[*] Verifying $KERN_VER/build directory"
 if [ -d "/lib/modules/$KERN_VER/build" ]; then
     echo "[+] Headers successfully installed at /lib/modules/$KERN_VER/build"
+    apt-get install linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
+    apt-get build-dep linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
+    apt-get --fix-missing install -y
 else
     echo "[!] Header installation failed - continuing with exploit anyway"
     echo "[!] Exploit doesn't require headers but they're nice to have for debugging"
@@ -90,7 +94,7 @@ sleep 2
 ### ===Create kvm_prober===
 echo "[*] Installing exploit script"
 
-Check if previous kvm_prober directory exists
+# Check if previous kvm_prober directory exists
 if ls -la /tmp/kvm_probe_build* &>/dev/null; then
    echo "[!] Removing previous kvm_prober directory"
    rm -r /tmp/kvm_probe_build*

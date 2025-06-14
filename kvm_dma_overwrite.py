@@ -829,34 +829,27 @@ int main(int argc, char *argv[]) {{
 """
 
     makefile_code = f"""
-TARGET_MODULE := {{MODULE_NAME}}
-USER_PROBER := {{USER_PROBER_NAME}}
+# Kernel module part
+obj-m := kvm_probe_drv.o
 
-obj-m += $(TARGET_MODULE).o
+# The build directory for the kernel module
+KDIR := /lib/modules/$(shell uname -r)/build
+PWD := $(shell pwd)
 
-KVERS := $(shell uname -r)
-KDIR := /lib/modules/$(KVERS)/build
-PWD_M := $(shell pwd)
+# Userland exploit name (change as needed)
+USER_PROG := kvm_prober
 
-EXTRA_CFLAGS_MODULE := -Wno-declaration-after-statement -D_GNU_SOURCE -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-unused-variable
+all: $(USER_PROG) kmod
 
-all: $(TARGET_MODULE).ko $(USER_PROBER)
+$(USER_PROG): kvm_prober.c
+        gcc -Wall -O2 -o $(USER_PROG) kvm_prober.c
 
-$(TARGET_MODULE).ko: {{MODULE_NAME}}.c
-\t@echo "Building Kernel Module $(TARGET_MODULE).ko for kernel $(KVERS)"
-\t$(MAKE) -C $(KDIR) M=$(PWD_M) EXTRA_CFLAGS="$(EXTRA_CFLAGS_MODULE)" modules
-
-$(USER_PROBER): {USER_PROBER_NAME}.c
-\t@echo "Building User Prober $(USER_PROBER)"
-\tgcc -Wall -O2 -o $(USER_PROBER) {{USER_PROBER_NAME}}.c
+kmod:
+        make -C $(KDIR) M=$(PWD) modules
 
 clean:
-\t@echo "Cleaning build files..."
-\t$(MAKE) -C $(KDIR) M=$(PWD_M) clean > /dev/null 2>&1 || true
-\trm -f $(USER_PROBER) *.o .*.o.cmd .*.ko.cmd *.mod.c *.order *.symvers \\
-\t Module.markers modules.builtin modules.builtin.modinfo .tmp_versions/* \\
-\t .$(TARGET_MODULE).ko.cmd .$(TARGET_MODULE).mod.o.cmd .$(TARGET_MODULE).o.cmd \\
-\t $(TARGET_MODULE).mod $(TARGET_MODULE).mod.o
+        make -C $(KDIR) M=$(PWD) clean
+        rm -f $(USER_PROG)
 """
 
     try:
