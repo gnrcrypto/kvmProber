@@ -31,8 +31,8 @@ if [[ "$KERN_VER" == *"6.1.0-21"* ]]; then
     echo "[*] Downloading/Installing matching kvmCTF headers"
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-common_6.1.90-1_all.deb
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb
-    apt-get install ./linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
-    apt-get install ./linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
+    dpkg -i ./linux-headers-6.1.0-21-common_6.1.90-1_all.deb || true
+    dpkg -i ./linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb || true
     apt-get --fix-missing install -y >/dev/null
 else
     # Check if /proc/kallsyms exists
@@ -61,8 +61,8 @@ echo "[*] Performing system configuration checks"
 
 sleep 2
 ### ===Ensure kptr_restrict is disabled===
-echo 0 | sudo tee /proc/sys/kernel/kptr_restrict
-echo 0 | sudo tee /proc/sys/kernel/dmesg_restrict
+echo 0 |  tee /proc/sys/kernel/kptr_restrict
+echo 0 |  tee /proc/sys/kernel/dmesg_restrict
 echo "[+] Disabled kernel restrictions"
 
 if grep -qw "nokaslr" /proc/cmdline; then
@@ -71,13 +71,13 @@ else
     echo "[!] KASLR is ENABLED - attempting to disable for next boot..."
     # Add nokaslr to GRUB if not already present
     if ! grep -qw "nokaslr" /etc/default/grub; then
-        sudo sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"nokaslr /' /etc/default/grub
-        sudo update-grub
+         sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"nokaslr /' /etc/default/grub
+         update-grub
         echo "[+] 'nokaslr' added to GRUB. You must reboot for KASLR to be disabled."
         echo "[+] Reboot now? (y/N)"
         read answer
         if [[ "$answer" =~ ^[Yy]$ ]]; then
-            sudo reboot
+             reboot
         else
             echo "[!] KASLR will remain enabled until you reboot."
         fi
@@ -118,8 +118,8 @@ fi
 
 sleep 2
 ### ===Check /proc/iomem and Kernel Symbol Access===
-if sudo grep -q "Kernel code" /proc/iomem; then
-    KERNEL_LINE=$(sudo grep "Kernel code" /proc/iomem | head -n1)
+if  grep -q "Kernel code" /proc/iomem; then
+    KERNEL_LINE=$( grep "Kernel code" /proc/iomem | head -n1)
     KERNEL_PHYS_BASE=$(echo "$KERNEL_LINE" | awk '{print $1}' | cut -d'-' -f1)
     echo "[+] Kernel physical base address: 0x$KERNEL_PHYS_BASE"
 else
