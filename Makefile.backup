@@ -1,20 +1,30 @@
-# --- Makefile for KVM exploit/probe setup ---
+TARGET_MODULE := kvm_probe_drv
+USER_PROBER := kvm_prober
 
-obj-m := kvm_probe_drv.o
+obj-m += $(TARGET_MODULE).o
 
-KDIR := /lib/modules/$(shell uname -r)/build
-PWD  := $(shell pwd)
+KVERS := $(shell uname -r)
+KDIR := /lib/modules/$(KVERS)/build
+PWD_M := $(shell pwd)
 
-all: kvm_probe_drv.ko kvm_prober
+EXTRA_CFLAGS_MODULE := -Wno-declaration-after-statement -D_GNU_SOURCE -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -Wno-unused-variable
 
-kvm_probe_drv.ko: kvm_probe_drv.c
-	$(MAKE) -C $(KDIR) M=$(PWD) modules
+all: $(TARGET_MODULE).ko $(USER_PROBER)
 
-kvm_prober: kvm_prober.c
-	gcc -Wall -O2 -o kvm_prober kvm_prober.c
+$(TARGET_MODULE).ko: kvm_probe_drv.c
+	@echo "Building Kernel Module $(TARGET_MODULE).ko for kernel $(KVERS)"
+	$(MAKE) -C $(KDIR) M=$(PWD_M) EXTRA_CFLAGS="$(EXTRA_CFLAGS_MODULE)" modules
+
+$(USER_PROBER): kvm_prober.c
+	@echo "Building User Prober $(USER_PROBER)"
+	$(CC) -Wall -O2 -o $(USER_PROBER) kvm_prober.c
 
 clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
-	rm -f kvm_prober
+	@echo "Cleaning build files..."
+	$(MAKE) -C $(KDIR) M=$(PWD_M) clean > /dev/null 2>&1 || true
+	rm -f $(USER_PROBER) *.o .*.o.cmd .*.ko.cmd *.mod.c *.order *.symvers \\
+	Module.markers modules.builtin modules.builtin.modinfo .tmp_versions/* \\
+	.$(TARGET_MODULE).ko.cmd .$(TARGET_MODULE).mod.o.cmd .$(TARGET_MODULE).o.cmd \\
+	$(TARGET_MODULE).mod $(TARGET_MODULE).mod.o
 
-.PHONY: all clean
+.PHONY: all clean modules
