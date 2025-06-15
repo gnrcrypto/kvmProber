@@ -66,12 +66,12 @@ apt install sudo make xxd python3-pip build-essential binutils tar -y >/dev/null
 sleep 2
 ### ===Kernel Header Installation===
 echo "[*] Installing kernel headers for exploit environment"
-KERN_VER=6.1.0-21
+KERN_VER=6.1.0-21-amd64
 echo "[+] Detected kernel version: $KERN_VER"
 
 sleep 2
 # Check if the kernel version contains "6.1.0-21"
-if [[ "$KERN_VER" == *"6.1.0-21"* ]]; then
+if [[ "$KERN_VER" == 6.1.0-21-amd64 ]]; then
     echo "[*] Downloading/Installing matching kvmCTF headers"
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-common_6.1.90-1_all.deb
     wget -q https://debian.sipwise.com/debian-security/pool/main/l/linux/linux-headers-6.1.0-21-amd64_6.1.90-1_amd64.deb
@@ -92,11 +92,11 @@ fi
 
 sleep 2
 ### ===Verify installation===
-echo "[*] Verifying 6.1.0-21/build directory"
-if [ -d "/lib/modules/*6.1.0-21/build" ]; then
-    echo "[+] Headers successfully installed at /lib/modules/6.1.0-21/build"
-    apt-get install linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
-    apt-get build-dep linux-headers-6.1.0-21-common linux-image-6.1.0-21-amd64 -y
+echo "[*] Verifying 6.1.0-21-amd64/build directory"
+if [ -d "/lib/modules/6.1.0-21-amd64/build" ]; then
+    echo "[+] Headers successfully installed at /lib/modules/6.1.0-21-amd64/build"
+    apt-get install linux-headers-6.1.0-21-amd64 -y
+    apt-get build-dep linux-headers-6.1.0-21-amd64 -y
     apt-get --fix-missing install -y
 else
     echo "[!] Header installation failed - continuing with exploit anyway"
