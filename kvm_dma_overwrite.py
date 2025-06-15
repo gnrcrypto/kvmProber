@@ -1,12 +1,4 @@
 # -*- coding: utf-8 -*-
-import os
-import subprocess
-import shutil
-import tempfile
-import sys
-import fcntl
-import importlib.util
-import stat
 from dynamic_kvm_prober import (
     get_kvm_related_modules,
     enumerate_char_devices,
@@ -16,12 +8,16 @@ from dynamic_kvm_prober import (
     PLUGIN_DIR,
     PLUGIN_TEMPLATE,
 )
+import os
+import tempfile
+import shutil
+import subprocess
+import fcntl
+import importlib.util
+import stat
 
 # Path to vmlinux file containing kernel symbols
 VMLINUX_PATH = "/root/vmlinux"
-# --- Configuration ---
-MODULE_NAME = "kvm_probe_drv"
-USER_PROBER_NAME = "kvm_prober"
 # --- Configuration ---
 MODULE_NAME = "kvm_probe_drv"
 USER_PROBER_NAME = "kvm_prober"
@@ -87,38 +83,65 @@ def run_command(cmd_list, cwd=None, capture_output=True, check=True, ignore_erro
 
 # --- Main Lab Setup Logic ---
 def setup_kvm_probe_lab():
-    workdir = None
-    module_loaded_successfully = False
-
-    print("--- [KVM Probe Lab Setup - Enhanced for Host Interaction] ---")
-
-    if os.geteuid() != 0:
-        print("🚨 This script needs to run as root.")
-        return
-
-    print("✅ Running as root. Proceeding with setup.")
-
-    if not check_command_exists("make") or not check_command_exists("gcc"):
-        print("❌ 'make' or 'gcc' not found. Attempting to install...")
-        run_command(["sudo", "apt", "update", "-qq"], ignore_errors=True)
-        run_command(["sudo", "apt", "install", "-y", "-qq", "build-essential"], ignore_errors=True)
-        if not check_command_exists("make") or not check_command_exists("gcc"):
-            print("❌ Failed to install 'make'/'gcc'. Aborting.")
-            return
+    import shutil
+    import subprocess
 
     try:
         workdir = tempfile.mkdtemp(prefix=TEMP_BUILD_DIR_PREFIX)
         print(f"📂 Temp build directory: {workdir}")
+
+        kernel_module_c_path = os.path.join(workdir, f'{MODULE_NAME}.c')
+        user_prober_c_path   = os.path.join(workdir, f'{USER_PROBER_NAME}.c')
+        makefile_path        = os.path.join(workdir, 'Makefile')
+        kernel_module_ko_path = os.path.join(workdir, f"{MODULE_NAME}.ko")
+        user_prober_exe_path  = os.path.join(workdir, USER_PROBER_NAME)
+
+        # Write the kernel module source
+        with open(kernel_module_c_path, "w") as f:
+            f.write(kernel_module_code)
+        # Write the user prober source
+        with open(user_prober_c_path, "w") as f:
+            f.write(user_prober_code)
+        # Write the Makefile
+        with open(makefile_path, "w") as f:
+            f.write(makefile_code)
+        print("✅ Source files written to build directory.")
+
+        # Now you can run make, etc. as needed here...
+        run_command(["make"], cwd=workdir, check=True)
+
     except Exception as e:
-        print(f"❌ Failed to create temp dir: {e}. Aborting."); return
+        print(f"❌ Error during KVM Probe Lab setup: {e}")
 
-    kernel_module_c_path = os.path.join(workdir, f'{MODULE_NAME}.c')
-    user_prober_c_path   = os.path.join(workdir, f'{USER_PROBER_NAME}.c')
-    makefile_path        = os.path.join(workdir, 'Makefile')
-    kernel_module_ko_path = os.path.join(workdir, f"{MODULE_NAME}.ko")
-    user_prober_exe_path  = os.path.join(workdir, USER_PROBER_NAME)
+def main():
+    os.makedirs(PLUGIN_DIR, exist_ok=True)
+    setup_kvm_probe_lab()
+    modules = get_kvm_related_modules()
+    char_devices = enumerate_char_devices()
 
-    kernel_module_code = f"""
+    for dev_path in char_devices:
+        dev_name = os.path.basename(dev_path)
+        plugin = None
+        # Try to load plugin by device name
+        plugin = load_plugin(dev_name)
+        # If not found, try by module name
+        if not plugin:
+            for mod in modules:
+                if mod in dev_name:
+                    plugin = load_plugin(mod)
+                    if plugin:
+                        break
+        # Use plugin if found, else generic probe
+        if plugin and hasattr(plugin, 'probe'):
+            print(f"[+] Using plugin for {dev_name}")
+            plugin.probe(dev_path)
+        else:
+            generic_probe(dev_path)
+
+if __name__ == "__main__":
+    main()
+
+kernel_module_code = """
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -558,8 +581,7 @@ module_init(mod_init);
 module_exit(mod_exit);
 """
 
-    # --- USER-SPACE PROBER C CODE (kvm_prober.c) ---
-    user_prober_code = f"""
+user_prober_code = """
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -881,7 +903,6 @@ int main(int argc, char *argv[]) {{
     }} else if (strcmp(cmd, "scanmmio") == 0) {{
         if (argc != 5) {{
             print_usage(argv[0]);
-            close(fd);
             return 1;
         }}
         unsigned long start = strtoul(argv[2], NULL, 16);
@@ -917,31 +938,33 @@ int main(int argc, char *argv[]) {{
 
     close(fd);
     return 0;
-}}
+}
 """
 
-makefile_code = f"""
+makefile_code = """
 # --- Makefile for KVM exploit/probe setup ---
 obj-m := kvm_probe_drv.o
 
 KDIR := /lib/modules/$(shell uname -r)/build
 PWD  := $(shell pwd)
 
-all: kvm_probe_drv.ko kvm_prober
+USER_PROG := kvm_prober
 
-kvm_probe_drv.ko: kvm_probe_drv.c
-\t$(MAKE) -C $(KDIR) M=$(PWD) modules
+all: $(USER_PROG) kmod
 
-kvm_prober: kvm_prober.c
-\tgcc -Wall -O2 -o kvm_prober kvm_prober.c
+$(USER_PROG): kvm_prober.c
+\tgcc -Wall -O2 -o $(USER_PROG) kvm_prober.c
+
+kmod:
+\tmake -C $(KDIR) M=$(PWD) modules
 
 clean:
-\t$(MAKE) -C $(KDIR) M=$(PWD) clean
-\trm -f kvm_prober
+\tmake -C $(KDIR) M=$(PWD) clean
+\trm -f $(USER_PROG)
 
 .PHONY: all clean
 """
- 
+
 # Call the setup function at the appropriate place (e.g., in main)
 def main():
     os.makedirs(PLUGIN_DIR, exist_ok=True)
@@ -1036,6 +1059,7 @@ def enumerate_char_devices():
 
 def main():
     os.makedirs(PLUGIN_DIR, exist_ok=True)
+    setup_kvm_probe_lab()
     modules = get_kvm_related_modules()
     char_devices = enumerate_char_devices()
 
