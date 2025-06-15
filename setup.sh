@@ -24,6 +24,29 @@ else
 fi
 
 sleep 2
+# disabling kaslr
+if grep -qw "nokaslr" /proc/cmdline; then
+    echo "[+] KASLR is DISABLED (nokaslr in cmdline)"
+else
+    echo "[!] KASLR is ENABLED - attempting to disable for next boot..."
+    # Add nokaslr to GRUB if not already present
+    if ! grep -qw "nokaslr" /etc/default/grub; then
+         sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"nokaslr /' /etc/default/grub
+         update-grub
+        echo "[+] 'nokaslr' added to GRUB. You must reboot for KASLR to be disabled."
+        echo "[+] Reboot now? (y/N)"
+        read answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+             reboot
+        else
+            echo "[!] KASLR will remain enabled until you reboot."
+        fi
+    else
+        echo "[*] 'nokaslr' already in /etc/default/grub. Just reboot to disable KASLR."
+    fi
+fi
+
+sleep 2
 # Fetch vmlinux only if not already present
 if [ ! -f "/root/vmlinux" ]; then
     echo "[*] Downloading latest kvmctf bundle for vmlinux..."
@@ -89,27 +112,6 @@ sleep 2
 echo 0 |  tee /proc/sys/kernel/kptr_restrict
 echo 0 |  tee /proc/sys/kernel/dmesg_restrict
 echo "[+] Disabled kernel restrictions"
-
-if grep -qw "nokaslr" /proc/cmdline; then
-    echo "[+] KASLR is DISABLED (nokaslr in cmdline)"
-else
-    echo "[!] KASLR is ENABLED - attempting to disable for next boot..."
-    # Add nokaslr to GRUB if not already present
-    if ! grep -qw "nokaslr" /etc/default/grub; then
-         sed -i 's/^GRUB_CMDLINE_LINUX=\"/GRUB_CMDLINE_LINUX=\"nokaslr /' /etc/default/grub
-         update-grub
-        echo "[+] 'nokaslr' added to GRUB. You must reboot for KASLR to be disabled."
-        echo "[+] Reboot now? (y/N)"
-        read answer
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-             reboot
-        else
-            echo "[!] KASLR will remain enabled until you reboot."
-        fi
-    else
-        echo "[*] 'nokaslr' already in /etc/default/grub. Just reboot to disable KASLR."
-    fi
-fi
 
 sleep 2
 ### ===Create kvm_prober===
@@ -207,6 +209,11 @@ sleep 2
 if [[ ! -f /root/modprobe_candidates ]]; then
     echo "[!] modprobe_candidates not created! vmlinux might be unavailable."
 fi
+
+sleep 2
+# build hypercall
+echo "[*] building hypercall"
+gcc -O2 -Wall -o hypercall_beast hypercall_beast.c
 
 echo "[✔] modprobe_candidates successfully created!"
 echo "[*] $MODPROBE_PA"
